@@ -1,0 +1,5 @@
+__pycache__
+DOKUMENTY
+vectorDatabase_MULTI
+config/active_db.json
+.env

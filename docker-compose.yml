@@ -1,0 +1,25 @@
+services:
+  rag-server:
+    build:
+      context: .
+      args:
+        CUDA_VARIANT: ${CUDA_VARIANT:-cu118}
+    container_name: rag_manager
+    volumes:
+      - .:/app
+      - ./vectorDatabase_MULTI:/app/vectorDatabase_MULTI
+      - ./config:/app/config
+      - ./DOKUMENTY:/app/DOKUMENTY
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - PYTHONUNBUFFERED=1
+    stdin_open: true
+    tty: true
