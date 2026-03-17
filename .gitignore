@@ -3,3 +3,5 @@ DOKUMENTY
 vectorDatabase_MULTI
 config/active_db.json
 .env
+.idea
+.claude
