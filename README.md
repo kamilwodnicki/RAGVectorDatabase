@@ -10,6 +10,35 @@ PRZYGOTOWANIE (WINDOWS & UBUNTU):
 1. Upewnij się, że masz zainstalowanego Dockera.
 2. Wrzuć pliki PDF do folderu: /DOKUMENTY
 
+## ⚠️ Akceleracja GPU i rozwiązywanie problemów ze środowiskiem Docker
+
+System został zaprojektowany z myślą o wykorzystaniu akceleracji sprzętowej (GPU), co znacząco przyspiesza procesy przetwarzania danych i generowania embeddingów. Aby kontenery Docker mogły korzystać z karty graficznej, konieczna jest odpowiednia konfiguracja systemu operacyjnego na którym są uruchamiane (hosta).
+
+### Dlaczego środowisko wymaga dodatkowej konfiguracji?
+Z założenia kontenery są środowiskiem wyizolowanym od fizycznego sprzętu hosta. Oznacza to, że sama instalacja karty graficznej i sterowników w systemie operacyjnym nie wystarczy, aby aplikacja wewnątrz kontenera mogła z nich korzystać. 
+
+Brak odpowiedniej warstwy komunikacyjnej pomiędzy Dockerem a kartą graficzną zazwyczaj objawia się błędem podczas próby uruchomienia usług (np. za pomocą komendy `docker compose up -d`):
+> `Error response from daemon: could not select device driver "nvidia" with capabilities: [[gpu]]`
+
+### Jak poprawnie skonfigurować wsparcie dla GPU (Wytyczne ogólne)
+
+Aby zapewnić stabilne działanie systemu, proces konfiguracji hosta musi być dostosowany do posiadanego modelu sprzętu i opierać się na oficjalnej dokumentacji:
+
+1. **Instalacja odpowiednich sterowników na hoście**
+   Karta graficzna wymaga sterowników ściśle dopasowanych do jej architektury.
+   * **Ostrzeżenie:** Oficjalne pakiety z narzędziami programistycznymi (np. `cuda-drivers` pobierane ze strony NVIDIA) często zawierają metapakiety wymuszające instalację najnowszych możliwych sterowników. W przypadku posiadania kilkuletniej karty graficznej, próba instalacji najnowszego sterownika zakończy się błędem lub awarią interfejsu graficznego.
+   * **Rekomendacja:** W systemach Linux korzystaj wyłącznie z wbudowanych narzędzi systemowych (np. `ubuntu-drivers` w systemach Ubuntu). Narzędzia te analizują sprzęt i pobierają z oficjalnych repozytoriów systemu stabilną wersję sterownika, która została przetestowana z Twoją kartą i obecną wersją jądra (kernela).
+
+2. **Zapewnienie spójności wersji środowiska CUDA**
+   Zainstalowany na hoście sterownik karty graficznej narzuca limit maksymalnej wspieranej wersji technologii CUDA. Należy zawsze upewnić się, że wymagania projektu (lub używanych w nim obrazów kontenerów) nie przekraczają możliwości zainstalowanego sterownika. Weryfikacji środowiska na hoście dokonuje się zazwyczaj za pomocą polecenia systemowego `nvidia-smi`.
+
+3. **Instalacja oprogramowania NVIDIA Container Toolkit**
+   NVIDIA Container Toolkit to oficjalne narzędzie, które przełamuje izolację kontenerów i stanowi jedyny rekomendowany sposób na udostępnienie zasobów GPU usłudze Docker. Konfiguruje ono główny proces Dockera tak, aby obsługiwał żądania dostępu do sprzętu graficznego.
+   * Oprogramowanie to instaluje się bezpośrednio w głównym systemie operacyjnym, a nie wewnątrz środowiska projektu.
+   * Aktualna instrukcja instalacji dla różnych systemów operacyjnych znajduje się zawsze w oficjalnej dokumentacji producenta:
+   * 🔗 [Dokumentacja NVIDIA Container Toolkit - Installation Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+
+
 -----------------------------------------------------------
 URUCHOMIENIE SYSTEMU (DOCKER)
 -----------------------------------------------------------
