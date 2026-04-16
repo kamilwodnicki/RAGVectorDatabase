@@ -5,7 +5,6 @@ import pandas as pd
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer, util
 import torch
-from src.core.config import SPLITTER_TYPES, LENGTH_VARIANTS, MODEL_NAME
 
 app = typer.Typer()
 
