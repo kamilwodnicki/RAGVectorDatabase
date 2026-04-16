@@ -1,4 +1,4 @@
-DOCKER_COMPOSE = docker-compose
+DOCKER_COMPOSE = docker compose
 SERVICE_NAME = rag-server
 
 .PHONY: build up down shell logs clean-db
