@@ -1,7 +1,7 @@
 __pycache__
 DOKUMENTY
-vectorDatabase_MULTI
-config/active_db.json
+qdrant_storage
 .env
 .idea
 .claude
+CLAUDE.md

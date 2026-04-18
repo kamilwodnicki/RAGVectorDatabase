@@ -3,12 +3,12 @@ uvicorn
 typer[all]
 langchain>=0.2.0
 langchain-community>=0.2.0
-langchain-chroma
-chromadb
+langchain-qdrant
+qdrant-client
 sentence-transformers
 numpy<2
 transformers<4.47.0
-pypdf
+unstructured[pdf]
 requests
 pandas
 tqdm

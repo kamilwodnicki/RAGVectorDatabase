@@ -1,21 +1,21 @@
 import typer
 import uvicorn
-from src.commands import db, benchmark, speedtest
+from src.commands import db, ingest
 
-app = typer.Typer(help="Profesjonalny System Zarządzania RAG dla pracy magisterskiej")
+app = typer.Typer(help="System Zarządzania RAG")
 
 app.add_typer(db.app, name="db")
-app.add_typer(benchmark.app, name="test")
-app.add_typer(speedtest.app, name="speedtest")
+app.add_typer(ingest.app, name="ingest")
+
 
 @app.command("serve")
 def serve(
-    port: int = typer.Option(8000, help="Port, na którym ma działać API"),
-    host: str = typer.Option("0.0.0.0", help="Host serwera")
+    port: int = typer.Option(8000, help="Port serwera API"),
+    host: str = typer.Option("0.0.0.0", help="Host serwera"),
 ):
-    """Uruchamia serwer FastAPI (obsługujący zapytania na CPU)."""
     typer.echo(f"Uruchamiam serwer API na {host}:{port}...")
-    uvicorn.run("src.api:app", host=host, port=port, reload=True)
+    uvicorn.run("src.server.app:app", host=host, port=port, reload=True)
+
 
 if __name__ == "__main__":
     app()

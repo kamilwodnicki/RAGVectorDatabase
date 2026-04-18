@@ -1,14 +1,24 @@
 services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
   rag-server:
     build:
       context: .
       args:
         CUDA_VARIANT: ${CUDA_VARIANT:-cu118}
     container_name: rag_manager
+    depends_on:
+      - qdrant
     volumes:
       - .:/app
-      - ./vectorDatabase_MULTI:/app/vectorDatabase_MULTI
-      - ./config:/app/config
       - ./DOKUMENTY:/app/DOKUMENTY
     ports:
       - "8000:8000"
@@ -21,5 +31,9 @@ services:
               capabilities: [gpu]
     environment:
       - PYTHONUNBUFFERED=1
+      - QDRANT_HOST=qdrant
     stdin_open: true
     tty: true
+
+volumes:
+  qdrant_data:
