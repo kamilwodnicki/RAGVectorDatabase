@@ -9,14 +9,26 @@ services:
       - qdrant_data:/qdrant/storage
     restart: always
 
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=rag
+    restart: always
+
   rag-server:
     build:
       context: .
       args:
         CUDA_VARIANT: ${CUDA_VARIANT:-cu118}
-    container_name: rag_manager
+    container_name: rag-server
     depends_on:
       - qdrant
+      - mongodb
     volumes:
       - .:/app
       - ./DOKUMENTY:/app/DOKUMENTY
@@ -32,8 +44,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - QDRANT_HOST=qdrant
+      - MONGODB_HOST=mongodb
     stdin_open: true
     tty: true
 
 volumes:
   qdrant_data:
+  mongodb_data:

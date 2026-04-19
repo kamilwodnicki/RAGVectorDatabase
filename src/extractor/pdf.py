@@ -1,25 +1,24 @@
+import logging
 from pathlib import Path
-from langchain_core.documents import Document
-from unstructured.partition.pdf import partition_pdf
-from unstructured.documents.elements import NarrativeText, Title, ListItem, Table
-
-_KEEP = (NarrativeText, Title, ListItem, Table)
+from src.config import EXTRACTION_LANGUAGES
 
 
-def extract_pdf(path: Path, strategy: str = "fast") -> list[Document]:
-    elements = partition_pdf(str(path), strategy=strategy)
-    pages: dict[int, list[str]] = {}
-    for el in elements:
-        if not isinstance(el, _KEEP):
-            continue
-        page = el.metadata.page_number or 1
-        pages.setdefault(page, []).append(str(el))
+class _NoFeaturesFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "No features in text" not in record.getMessage()
 
-    return [
-        Document(
-            page_content="\n\n".join(texts),
-            metadata={"source": str(path), "page": page},
-        )
-        for page, texts in sorted(pages.items())
-        if texts
-    ]
+
+logging.getLogger("unstructured").addFilter(_NoFeaturesFilter())
+
+
+def extract_pdf(path: Path, strategy: str = "fast"):
+    from unstructured.partition.pdf import partition_pdf
+    from unstructured.documents.elements import NarrativeText, Title, ListItem, Table
+
+    keep = (NarrativeText, Title, ListItem, Table)
+    elements = partition_pdf(
+        str(path),
+        strategy=strategy,
+        languages=EXTRACTION_LANGUAGES,
+    )
+    return [el for el in elements if isinstance(el, keep)]

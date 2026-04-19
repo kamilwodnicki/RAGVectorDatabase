@@ -1,6 +1,7 @@
 import typer
 from src.db.collection import setup_collection, get_collection_info
-from src.config import COLLECTION_NAME
+from src.db.mongo import get_parents_collection
+from src.config import COLLECTION_NAME, MONGODB_DB, MONGODB_PARENTS_COLLECTION
 
 app = typer.Typer()
 
@@ -23,3 +24,14 @@ def status():
         typer.echo(f"Status:          {info.status}")
     except Exception as e:
         typer.secho(f"Błąd połączenia z Qdrant: {e}", fg=typer.colors.RED)
+
+
+@app.command("mongo-status")
+def mongo_status():
+    try:
+        col = get_parents_collection()
+        count = col.count_documents({})
+        typer.echo(f"MongoDB:              {MONGODB_DB}.{MONGODB_PARENTS_COLLECTION}")
+        typer.echo(f"Liczba parentów:      {count}")
+    except Exception as e:
+        typer.secho(f"Błąd połączenia z MongoDB: {e}", fg=typer.colors.RED)

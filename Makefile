@@ -13,7 +13,7 @@ down:
 	$(DOCKER_COMPOSE) down
 
 shell:
-	docker exec -it rag_manager /bin/bash
+	docker exec -it rag-server /bin/bash
 
 logs:
 	$(DOCKER_COMPOSE) logs -f $(SERVICE_NAME)

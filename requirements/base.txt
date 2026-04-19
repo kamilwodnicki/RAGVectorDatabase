@@ -4,7 +4,9 @@ typer[all]
 langchain>=0.2.0
 langchain-community>=0.2.0
 langchain-qdrant
+langchain-text-splitters
 qdrant-client
+pymongo
 sentence-transformers
 numpy<2
 transformers<4.47.0

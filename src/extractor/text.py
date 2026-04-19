@@ -1,9 +1,10 @@
 from pathlib import Path
-from langchain_core.documents import Document
 
 
-def extract_text(path: Path) -> list[Document]:
-    content = path.read_text(encoding="utf-8", errors="replace").strip()
-    if not content:
-        return []
-    return [Document(page_content=content, metadata={"source": str(path)})]
+def extract_text(path: Path):
+    from unstructured.partition.text import partition_text
+    from unstructured.documents.elements import NarrativeText, Title, ListItem
+
+    keep = (NarrativeText, Title, ListItem)
+    elements = partition_text(filename=str(path))
+    return [el for el in elements if isinstance(el, keep)]
