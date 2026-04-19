@@ -1,0 +1,13 @@
+Uczenie maszynowe w praktyce
+
+Wprowadzenie do uczenia maszynowego
+
+Uczenie maszynowe to dziedzina sztucznej inteligencji zajmująca się budowaniem algorytmów, które potrafią uczyć się wzorców z danych bez jawnego programowania reguł. W odróżnieniu od klasycznego programowania, gdzie programista zapisuje krok po kroku co system ma robić, w uczeniu maszynowym dostarczamy modelowi przykłady, a on sam wydobywa z nich regularności. Takie podejście sprawdza się szczególnie dobrze w zadaniach trudnych do sformalizowania, jak rozpoznawanie obrazów, tłumaczenie języka naturalnego czy rekomendowanie produktów. Dzięki temu mogliśmy zbudować systemy, które dziesięć lat temu wydawały się science-fiction.
+
+Nadzorowane uczenie modeli
+
+W trybie nadzorowanym model otrzymuje parę wejście-wyjście i uczy się odwzorowania między nimi. Klasycznym przykładem jest rozpoznawanie zdjęć kotów — do modelu trafiają tysiące zdjęć wraz z etykietami "kot" lub "nie kot", a model uczy się rozróżniać te dwie klasy. Algorytmy nadzorowane obejmują regresję liniową, drzewa decyzyjne, lasy losowe oraz sieci neuronowe o różnych architekturach. Jakość modelu nadzorowanego zależy przede wszystkim od jakości i ilości etykietowanych danych treningowych, dlatego ich przygotowanie stanowi często największą część projektu.
+
+Uczenie nienadzorowane i reprezentacje wektorowe
+
+Uczenie nienadzorowane operuje na danych bez etykiet — model ma za zadanie znaleźć strukturę ukrytą w danych. Typowe zadania to grupowanie (klasteryzacja), redukcja wymiarowości oraz modelowanie rozkładu prawdopodobieństwa. Szczególnie ważnym zastosowaniem są embeddingi, czyli wektorowe reprezentacje obiektów, które zachowują relacje semantyczne — słowa o podobnym znaczeniu leżą blisko siebie w przestrzeni wektorowej. Embeddingi zrewolucjonizowały wyszukiwanie informacji, ponieważ pozwalają na wyszukiwanie semantyczne zamiast dopasowywania słów kluczowych.

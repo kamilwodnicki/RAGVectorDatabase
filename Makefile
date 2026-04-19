@@ -30,4 +30,4 @@ test-eval:
 
 test: test-unit
 
-prepare_pr: test-unit
+prepare_pr: test-unit test-integration

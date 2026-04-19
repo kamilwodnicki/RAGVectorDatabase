@@ -1,0 +1,13 @@
+Systemy RAG - Retrieval Augmented Generation
+
+Czym jest RAG
+
+Retrieval Augmented Generation to architektura łącząca wyszukiwanie informacji z generatywnymi modelami językowymi. Zamiast polegać wyłącznie na wiedzy zakodowanej w wagach modelu językowego, system RAG najpierw wyszukuje fragmenty dokumentów związane z zapytaniem użytkownika, a następnie przekazuje je modelowi jako kontekst. Dzięki temu model może udzielać odpowiedzi opartych o aktualną, dziedzinową wiedzę, która nie musi być obecna w zbiorze treningowym. Systemy RAG są szczególnie popularne w zastosowaniach takich jak chatboty korporacyjne, asystenci dokumentacji technicznej oraz narzędzia do analizy prawnej.
+
+Architektura parent-child chunkingu
+
+Jednym z najważniejszych problemów w RAG jest odpowiedni podział dokumentów na fragmenty, zwany chunkingiem. Podejście parent-child polega na jednoczesnym utrzymywaniu dwóch granulacji — małych fragmentów dzieci osadzanych w bazie wektorowej oraz większych fragmentów rodziców przechowywanych w bazie dokumentów. Wyszukiwanie odbywa się na poziomie dzieci, co zapewnia wysoką precyzję dopasowania, ale do modelu językowego trafia zawsze cały rodzic, dzięki czemu zachowany jest pełniejszy kontekst potrzebny do udzielenia rzetelnej odpowiedzi. Ten kompromis między precyzją wyszukiwania a bogactwem kontekstu okazuje się w praktyce bardzo skuteczny.
+
+Embeddingi wielojęzyczne
+
+W kontekście RAG dla dokumentów polskojęzycznych kluczowy jest wybór modelu embeddingów, który dobrze radzi sobie z językiem polskim. Modele jednojęzyczne angielskie sprawdzają się słabo, bo nie znają specyficznych form gramatycznych oraz słownictwa. Lepszym wyborem są modele wielojęzyczne takie jak multilingual-e5-base, które były trenowane na setkach języków jednocześnie. Warto pamiętać o konwencji prefiksów — modele E5 wymagają dodania przedrostka passage dla dokumentów oraz query dla zapytań, w przeciwnym razie jakość wyników znacznie spada.

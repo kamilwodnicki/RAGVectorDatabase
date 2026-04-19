@@ -10,7 +10,7 @@ INGEST_DEVICE = "cuda" if torch.cuda.is_available() else None
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = 6333
-COLLECTION_NAME = "documents"
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "documents")
 
 MONGODB_HOST = os.getenv("MONGODB_HOST", "localhost")
 MONGODB_PORT = int(os.getenv("MONGODB_PORT", "27017"))
