@@ -50,4 +50,6 @@ services:
 
 volumes:
   qdrant_data:
+    name: rag_qdrant_data
   mongodb_data:
+    name: rag_mongodb_data
