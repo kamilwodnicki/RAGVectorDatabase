@@ -18,13 +18,31 @@ MONGODB_DB = os.getenv("MONGODB_DB", "rag")
 MONGODB_PARENTS_COLLECTION = "parents"
 MONGODB_FILES_METADATA_COLLECTION = "files_metadata"
 
-PARENT_MAX_SIZE = 2000
-PARENT_SOFT_SIZE = 1500
-PARENT_COMBINE_UNDER = 800
-PARENT_OVERLAP = 0
+PARENT_MAX_SIZE = int(os.getenv("PARENT_MAX_SIZE", "2000"))
+PARENT_SOFT_SIZE = int(os.getenv("PARENT_SOFT_SIZE", "1500"))
+PARENT_COMBINE_UNDER = int(os.getenv("PARENT_COMBINE_UNDER", "800"))
+PARENT_OVERLAP = int(os.getenv("PARENT_OVERLAP", "0"))
 
-CHILD_CHUNK_SIZE = 400
-CHILD_CHUNK_OVERLAP = 80
+CHILD_CHUNK_SIZE = int(os.getenv("CHILD_CHUNK_SIZE", "400"))
+CHILD_CHUNK_OVERLAP = int(os.getenv("CHILD_CHUNK_OVERLAP", "80"))
+
+DEFAULT_K = int(os.getenv("DEFAULT_K", "3"))
 
 EXTRACTION_STRATEGY = os.getenv("EXTRACTION_STRATEGY", "fast")
 EXTRACTION_LANGUAGES = [lang.strip() for lang in os.getenv("EXTRACTION_LANGUAGES", "pol,eng").split(",") if lang.strip()]
+
+
+def format_effective_config() -> str:
+    lines = [
+        "Efektywna konfiguracja:",
+        f"  Qdrant:          host={QDRANT_HOST} port={QDRANT_PORT} collection={COLLECTION_NAME}",
+        f"  MongoDB:         host={MONGODB_HOST} port={MONGODB_PORT} db={MONGODB_DB}",
+        f"  Model:           {MODEL_NAME} (dim={EMBEDDING_DIM})",
+        f"  Urządzenia:      ingest={INGEST_DEVICE} api={API_DEVICE}",
+        f"  Parent chunking: max={PARENT_MAX_SIZE} soft={PARENT_SOFT_SIZE} "
+        f"combine_under={PARENT_COMBINE_UNDER} overlap={PARENT_OVERLAP}",
+        f"  Child chunking:  size={CHILD_CHUNK_SIZE} overlap={CHILD_CHUNK_OVERLAP}",
+        f"  Retrieval:       default_k={DEFAULT_K}",
+        f"  Ekstrakcja:      strategy={EXTRACTION_STRATEGY} languages={EXTRACTION_LANGUAGES}",
+    ]
+    return "\n".join(lines)

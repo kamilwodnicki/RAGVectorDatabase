@@ -13,6 +13,7 @@ from src.config import (
     PDF_SOURCE_DIR,
     QDRANT_HOST,
     QDRANT_PORT,
+    format_effective_config,
 )
 from src.db.client import get_client
 from src.db.collection import setup_collection
@@ -91,6 +92,7 @@ def _ingest_one_file(
 
 def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATEGY) -> None:
     _ensure_cuda()
+    typer.echo(format_effective_config())
     typer.echo(f"Synchronizacja | Urządzenie: {INGEST_DEVICE} | Strategia: {strategy}")
 
     physical = _list_source_files(source_dir)

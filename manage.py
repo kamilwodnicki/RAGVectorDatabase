@@ -1,6 +1,7 @@
 import typer
 import uvicorn
 from src.commands import db, ingest
+from src.config import format_effective_config
 
 app = typer.Typer(help="System Zarządzania RAG")
 
@@ -13,6 +14,7 @@ def serve(
     port: int = typer.Option(8000, help="Port serwera API"),
     host: str = typer.Option("0.0.0.0", help="Host serwera"),
 ):
+    typer.echo(format_effective_config())
     typer.echo(f"Uruchamiam serwer API na {host}:{port}...")
     uvicorn.run("src.server.app:app", host=host, port=port, reload=True)
 

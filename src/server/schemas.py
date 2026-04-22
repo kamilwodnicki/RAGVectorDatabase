@@ -1,9 +1,11 @@
 from pydantic import BaseModel
 
+from src.config import DEFAULT_K
+
 
 class QueryRequest(BaseModel):
     query: str
-    k: int = 3
+    k: int = DEFAULT_K
 
 
 class DocumentFragment(BaseModel):
