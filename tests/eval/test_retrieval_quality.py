@@ -9,24 +9,28 @@ MRR_AT_10_THRESHOLD = 0.55
 CHILDREN_FETCHED = 50
 
 
-def _retrieve_parents(query: str, k_children: int, embeddings) -> list[dict]:
-    from langchain_qdrant import QdrantVectorStore
-
-    from src.config import COLLECTION_NAME
-    from src.db.client import get_client
+def _retrieve_parents(
+    query: str,
+    k_children: int,
+    mode: str,
+    dense_embedder,
+    sparse_embedder,
+) -> list[dict]:
     from src.db.mongo import get_parents_collection
+    from src.retrieval.hybrid import retrieve_children
 
-    vs = QdrantVectorStore(
-        client=get_client(),
-        collection_name=COLLECTION_NAME,
-        embedding=embeddings,
+    children = retrieve_children(
+        query=query,
+        k=k_children,
+        mode=mode,
+        dense_embedder=dense_embedder,
+        sparse_embedder=sparse_embedder,
     )
-    children = vs.similarity_search(query, k=k_children)
 
     seen: set[str] = set()
     ordered_parent_ids: list[str] = []
     for child in children:
-        pid = child.metadata.get("parent_id")
+        pid = child.parent_id
         if pid and pid not in seen:
             seen.add(pid)
             ordered_parent_ids.append(pid)
@@ -55,11 +59,23 @@ def _rank_of_match(parents: list[dict], expected: dict) -> int | None:
     return None
 
 
-def test_retrieval_quality_meets_thresholds(ingested_corpus, golden_set, shared_embeddings, capsys):
+def test_retrieval_quality_meets_thresholds(
+    ingested_corpus,
+    golden_set,
+    shared_dense_embeddings,
+    shared_sparse_embeddings,
+    capsys,
+):
+    from src.config import RETRIEVAL_MODE
+
     results = []
     for q in golden_set:
         parents = _retrieve_parents(
-            q["question"], k_children=CHILDREN_FETCHED, embeddings=shared_embeddings
+            q["question"],
+            k_children=CHILDREN_FETCHED,
+            mode=RETRIEVAL_MODE,
+            dense_embedder=shared_dense_embeddings,
+            sparse_embedder=shared_sparse_embeddings,
         )
         rank = _rank_of_match(parents, q)
         results.append((q["id"], q["question"], rank))
@@ -71,6 +87,8 @@ def test_retrieval_quality_meets_thresholds(ingested_corpus, golden_set, shared_
     mrr_at_10 = sum(1 / r for _, _, r in results if r is not None and r <= 10) / n
 
     report_lines = ["", "=" * 78]
+    report_lines.append(f"Tryb retrieval: {RETRIEVAL_MODE}")
+    report_lines.append("-" * 78)
     report_lines.append(f"{'ID':<10} {'rank':<6} pytanie")
     report_lines.append("-" * 78)
     for qid, question, rank in results:

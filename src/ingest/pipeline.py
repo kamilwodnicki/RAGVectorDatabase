@@ -1,18 +1,18 @@
+import uuid
 from pathlib import Path
 
 import typer
-from langchain_qdrant import QdrantVectorStore
-from qdrant_client.models import PointIdsList
+from qdrant_client.models import PointIdsList, PointStruct, SparseVector
 
 from src.config import (
     COLLECTION_NAME,
+    DENSE_VECTOR_NAME,
     EXTRACTION_STRATEGY,
     INGEST_DEVICE,
     MONGODB_DB,
     MONGODB_FILES_METADATA_COLLECTION,
     PDF_SOURCE_DIR,
-    QDRANT_HOST,
-    QDRANT_PORT,
+    SPARSE_VECTOR_NAME,
     format_effective_config,
 )
 from src.db.client import get_client
@@ -30,6 +30,7 @@ from src.db.mongo import get_mongo_client, get_parents_collection
 from src.extractor.pipeline import extract_single_file
 from src.ingest.chunker import chunk_file_elements
 from src.ingest.embeddings import E5HuggingFaceEmbeddings
+from src.ingest.sparse_embeddings import BM25SparseEmbeddings
 
 
 def _ensure_cuda() -> None:
@@ -43,15 +44,6 @@ def _list_source_files(source_dir: str) -> list[Path]:
         p for p in sorted(Path(source_dir).rglob("*"))
         if p.is_file() and p.suffix.lower() in (".pdf", ".txt")
     ]
-
-
-def _get_vectorstore(embeddings: E5HuggingFaceEmbeddings) -> QdrantVectorStore:
-    from qdrant_client import QdrantClient
-    return QdrantVectorStore(
-        client=QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT),
-        collection_name=COLLECTION_NAME,
-        embedding=embeddings,
-    )
 
 
 def _delete_file_vectors(parent_ids: list[str], child_ids: list[str]) -> None:
@@ -68,7 +60,8 @@ def _ingest_one_file(
     path: Path,
     strategy: str,
     content_hash: str,
-    vectorstore: QdrantVectorStore,
+    dense_embedder: E5HuggingFaceEmbeddings,
+    sparse_embedder: BM25SparseEmbeddings,
 ) -> tuple[list[str], list[str]]:
     elements = extract_single_file(path, strategy=strategy)
     if not elements:
@@ -79,7 +72,35 @@ def _ingest_one_file(
         get_parents_collection().insert_many(parents)
 
     parent_ids = [p["_id"] for p in parents]
-    child_ids = vectorstore.add_documents(children) if children else []
+    child_ids: list[str] = []
+
+    if children:
+        texts = [c.page_content for c in children]
+        dense_vectors = dense_embedder.embed_documents(texts)
+        sparse_vectors = sparse_embedder.embed_documents(texts)
+
+        points = []
+        for child, dense_vec, sparse_vec in zip(children, dense_vectors, sparse_vectors):
+            child_id = str(uuid.uuid4())
+            child_ids.append(child_id)
+            points.append(PointStruct(
+                id=child_id,
+                vector={
+                    DENSE_VECTOR_NAME: dense_vec,
+                    SPARSE_VECTOR_NAME: SparseVector(
+                        indices=sparse_vec.indices,
+                        values=sparse_vec.values,
+                    ),
+                },
+                payload={
+                    "text": child.page_content,
+                    "parent_id": child.metadata["parent_id"],
+                    "source": child.metadata["source"],
+                    "page": child.metadata.get("page"),
+                },
+            ))
+
+        get_client().upsert(collection_name=COLLECTION_NAME, points=points)
 
     upsert_file_metadata(
         file_path=str(path),
@@ -136,15 +157,15 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
 
     to_process = to_add + to_update
     if to_process:
-        embeddings = E5HuggingFaceEmbeddings(device=INGEST_DEVICE)
-        vectorstore = _get_vectorstore(embeddings)
+        dense_embedder = E5HuggingFaceEmbeddings(device=INGEST_DEVICE)
+        sparse_embedder = BM25SparseEmbeddings()
 
         for ev in to_process:
             path = Path(ev.file_path)
             label = "ADD" if ev.action == FileAction.ADD else "UPD"
             try:
                 parent_ids, child_ids = _ingest_one_file(
-                    path, strategy, ev.content_hash, vectorstore
+                    path, strategy, ev.content_hash, dense_embedder, sparse_embedder
                 )
                 if not parent_ids and not child_ids:
                     typer.secho(f"  [WARN] {ev.file_path}: brak wyekstrahowanych elementów", fg=typer.colors.YELLOW)

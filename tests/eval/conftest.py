@@ -14,7 +14,7 @@ GOLDEN_SET_PATH = FIXTURES_DIR / "golden_set.json"
 
 
 @pytest.fixture(scope="session")
-def shared_embeddings():
+def shared_dense_embeddings():
     from src.config import INGEST_DEVICE
     from src.ingest.embeddings import E5HuggingFaceEmbeddings
 
@@ -24,13 +24,20 @@ def shared_embeddings():
 
 
 @pytest.fixture(scope="session")
+def shared_sparse_embeddings():
+    from src.ingest.sparse_embeddings import BM25SparseEmbeddings
+
+    return BM25SparseEmbeddings()
+
+
+@pytest.fixture(scope="session")
 def golden_set():
     with open(GOLDEN_SET_PATH, encoding="utf-8") as f:
         return json.load(f)["queries"]
 
 
 @pytest.fixture(scope="session")
-def ingested_corpus(shared_embeddings):
+def ingested_corpus(shared_dense_embeddings, shared_sparse_embeddings):
     from src.config import COLLECTION_NAME, MONGODB_DB
     from src.db import metadata_store
     from src.db.client import get_client
@@ -51,12 +58,15 @@ def ingested_corpus(shared_embeddings):
 
     _wipe()
 
-    original_cls = pipeline.E5HuggingFaceEmbeddings
-    pipeline.E5HuggingFaceEmbeddings = lambda device: shared_embeddings
+    original_dense_cls = pipeline.E5HuggingFaceEmbeddings
+    original_sparse_cls = pipeline.BM25SparseEmbeddings
+    pipeline.E5HuggingFaceEmbeddings = lambda device: shared_dense_embeddings
+    pipeline.BM25SparseEmbeddings = lambda: shared_sparse_embeddings
     try:
         run_sync(source_dir=str(CORPUS_DIR))
     finally:
-        pipeline.E5HuggingFaceEmbeddings = original_cls
+        pipeline.E5HuggingFaceEmbeddings = original_dense_cls
+        pipeline.BM25SparseEmbeddings = original_sparse_cls
 
     yield
 

@@ -1,43 +1,44 @@
 from fastapi import APIRouter, HTTPException
-from qdrant_client import QdrantClient
-from langchain_qdrant import QdrantVectorStore
-from src.config import QDRANT_HOST, QDRANT_PORT, COLLECTION_NAME, API_DEVICE
+
+from src.config import API_DEVICE, RETRIEVAL_MODE
 from src.db.mongo import get_parents_collection
 from src.ingest.embeddings import E5HuggingFaceEmbeddings
-from src.server.schemas import QueryRequest, QueryResponse, DocumentFragment
+from src.ingest.sparse_embeddings import BM25SparseEmbeddings
+from src.retrieval.hybrid import retrieve_children
+from src.server.schemas import DocumentFragment, QueryRequest, QueryResponse
 
 router = APIRouter()
 
-_embeddings = E5HuggingFaceEmbeddings(device=API_DEVICE)
-_vectorstore: QdrantVectorStore | None = None
+_dense_embedder = E5HuggingFaceEmbeddings(device=API_DEVICE)
+_sparse_embedder: BM25SparseEmbeddings | None = None
 
 
-def get_vectorstore() -> QdrantVectorStore:
-    global _vectorstore
-    if _vectorstore is None:
-        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-        _vectorstore = QdrantVectorStore(
-            client=client,
-            collection_name=COLLECTION_NAME,
-            embedding=_embeddings,
-        )
-    return _vectorstore
+def _get_sparse_embedder() -> BM25SparseEmbeddings | None:
+    global _sparse_embedder
+    if RETRIEVAL_MODE in ("sparse", "hybrid") and _sparse_embedder is None:
+        _sparse_embedder = BM25SparseEmbeddings()
+    return _sparse_embedder
 
 
 @router.post("/query/", response_model=QueryResponse)
 def query(request: QueryRequest):
     try:
-        children = get_vectorstore().similarity_search(request.query, k=request.k)
+        children = retrieve_children(
+            query=request.query,
+            k=request.k,
+            mode=RETRIEVAL_MODE,
+            dense_embedder=_dense_embedder,
+            sparse_embedder=_get_sparse_embedder(),
+        )
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
 
     seen: set[str] = set()
     ordered_parent_ids: list[str] = []
     for child in children:
-        pid = child.metadata.get("parent_id")
-        if pid and pid not in seen:
-            seen.add(pid)
-            ordered_parent_ids.append(pid)
+        if child.parent_id and child.parent_id not in seen:
+            seen.add(child.parent_id)
+            ordered_parent_ids.append(child.parent_id)
 
     if not ordered_parent_ids:
         return QueryResponse(results=[])

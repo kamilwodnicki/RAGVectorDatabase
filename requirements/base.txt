@@ -8,6 +8,7 @@ langchain-text-splitters
 qdrant-client
 pymongo
 sentence-transformers
+fastembed
 numpy<2
 transformers<4.47.0
 unstructured[pdf]

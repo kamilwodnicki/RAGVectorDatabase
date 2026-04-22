@@ -12,7 +12,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures" / "data"
 
 
 @pytest.fixture(scope="session")
-def _shared_embeddings():
+def _shared_dense_embeddings():
     from src.config import INGEST_DEVICE
     from src.ingest.embeddings import E5HuggingFaceEmbeddings
 
@@ -21,14 +21,26 @@ def _shared_embeddings():
     return E5HuggingFaceEmbeddings(device=INGEST_DEVICE)
 
 
+@pytest.fixture(scope="session")
+def _shared_sparse_embeddings():
+    from src.ingest.sparse_embeddings import BM25SparseEmbeddings
+
+    return BM25SparseEmbeddings()
+
+
 @pytest.fixture(autouse=True)
-def _reuse_embeddings(_shared_embeddings, monkeypatch):
+def _reuse_embeddings(_shared_dense_embeddings, _shared_sparse_embeddings, monkeypatch):
     from src.ingest import pipeline
 
     monkeypatch.setattr(
         pipeline,
         "E5HuggingFaceEmbeddings",
-        lambda device: _shared_embeddings,
+        lambda device: _shared_dense_embeddings,
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "BM25SparseEmbeddings",
+        lambda: _shared_sparse_embeddings,
     )
 
 
