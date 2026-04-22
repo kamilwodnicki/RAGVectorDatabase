@@ -1,0 +1,124 @@
+{
+  "queries": [
+    {
+      "id": "ml-01",
+      "question": "Czym różni się uczenie maszynowe od klasycznego programowania?",
+      "expected_source": "uczenie_maszynowe.txt",
+      "expected_keywords": ["jawne", "reguł", "parametr"]
+    },
+    {
+      "id": "ml-02",
+      "question": "Jaka jest różnica między uczeniem nadzorowanym a nienadzorowanym?",
+      "expected_source": "uczenie_maszynowe.txt",
+      "expected_keywords": ["etykiet", "nadzorowan"]
+    },
+    {
+      "id": "ml-03",
+      "question": "Czym jest przetrenowanie modelu i jak mu zapobiegać?",
+      "expected_source": "uczenie_maszynowe.txt",
+      "expected_keywords": ["przetrenowan", "regularyzac", "dropout"]
+    },
+    {
+      "id": "ml-04",
+      "question": "Jakie są przykłady algorytmów uczenia nadzorowanego?",
+      "expected_source": "uczenie_maszynowe.txt",
+      "expected_keywords": ["regresj", "drzew", "sieci neuronow"]
+    },
+    {
+      "id": "rag-01",
+      "question": "Jak działa architektura systemów RAG?",
+      "expected_source": "systemy_rag.txt",
+      "expected_keywords": ["retriever", "generator", "halucynac"]
+    },
+    {
+      "id": "rag-02",
+      "question": "Na czym polega chunking parent-child i po co się go stosuje?",
+      "expected_source": "systemy_rag.txt",
+      "expected_keywords": ["dzieci", "rodzic", "granulac"]
+    },
+    {
+      "id": "rag-03",
+      "question": "Dlaczego w retrievalu używa się modelu multilingual-e5?",
+      "expected_source": "systemy_rag.txt",
+      "expected_keywords": ["multilingual", "passage", "query"]
+    },
+    {
+      "id": "rag-04",
+      "question": "Jakie są zalety podejścia RAG nad samym modelem językowym?",
+      "expected_source": "systemy_rag.txt",
+      "expected_keywords": ["aktualizac", "halucynac", "retraining", "retren"]
+    },
+    {
+      "id": "trf-01",
+      "question": "Jak działa mechanizm uwagi w transformerach?",
+      "expected_source": "transformery.txt",
+      "expected_keywords": ["uwag", "równolegle"]
+    },
+    {
+      "id": "trf-02",
+      "question": "Czym różnią się modele BERT i GPT?",
+      "expected_source": "transformery.txt",
+      "expected_keywords": ["bert", "gpt", "enkod", "dekod"]
+    },
+    {
+      "id": "trf-03",
+      "question": "Co to jest LoRA i do czego służy?",
+      "expected_source": "transformery.txt",
+      "expected_keywords": ["lora", "macierz", "dostraj"]
+    },
+    {
+      "id": "trf-04",
+      "question": "W którym roku opublikowano pracę Attention Is All You Need?",
+      "expected_source": "transformery.txt",
+      "expected_keywords": ["2017", "attention"]
+    },
+    {
+      "id": "vec-01",
+      "question": "Do czego służy baza wektorowa?",
+      "expected_source": "bazy_wektorowe.txt",
+      "expected_keywords": ["wektor", "podobn", "wymiar"]
+    },
+    {
+      "id": "vec-02",
+      "question": "Jakie algorytmy ANN są najczęściej stosowane w praktyce?",
+      "expected_source": "bazy_wektorowe.txt",
+      "expected_keywords": ["hnsw", "ivf", "annoy"]
+    },
+    {
+      "id": "vec-03",
+      "question": "Jakie metryki odległości wspiera Qdrant?",
+      "expected_source": "bazy_wektorowe.txt",
+      "expected_keywords": ["kosinus", "euklides", "iloczyn"]
+    },
+    {
+      "id": "vec-04",
+      "question": "Czym jest kwantyzacja wektorów w Qdrant?",
+      "expected_source": "bazy_wektorowe.txt",
+      "expected_keywords": ["kwantyz", "pamięc"]
+    },
+    {
+      "id": "eval-01",
+      "question": "Czym jest golden set w ewaluacji systemów wyszukiwania?",
+      "expected_source": "ewaluacja_wyszukiwania.txt",
+      "expected_keywords": ["golden", "etykiet", "relewant"]
+    },
+    {
+      "id": "eval-02",
+      "question": "Jak działa metryka MRR i co mierzy?",
+      "expected_source": "ewaluacja_wyszukiwania.txt",
+      "expected_keywords": ["mrr", "odwrotn", "rang"]
+    },
+    {
+      "id": "eval-03",
+      "question": "Po co śledzić wyniki ewaluacji w czasie?",
+      "expected_source": "ewaluacja_wyszukiwania.txt",
+      "expected_keywords": ["regres", "porówn", "iteracy"]
+    },
+    {
+      "id": "eval-04",
+      "question": "Co mierzy metryka NDCG?",
+      "expected_source": "ewaluacja_wyszukiwania.txt",
+      "expected_keywords": ["ndcg", "dyskont", "rang"]
+    }
+  ]
+}

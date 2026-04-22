@@ -1,0 +1,13 @@
+Ewaluacja systemów wyszukiwania
+
+Golden set i etykietowanie
+
+Rzetelna ocena jakości systemu wyszukiwania wymaga przygotowania tak zwanego golden set, czyli zbioru zapytań wraz z przypisanymi im oczekiwanymi dokumentami odpowiedzi. Przygotowanie takiego zbioru jest procesem ręcznym — ktoś musi przeczytać dokumenty i zdecydować, które z nich stanowią poprawną odpowiedź na konkretne pytanie. W zależności od charakteru zadania można stosować etykiety binarne (relewantne / nierelewantne) lub stopniowane, gdzie każdemu dokumentowi przypisujemy wartość liczbową wyrażającą stopień dopasowania. Golden set jest fundamentem każdej porządnej ewaluacji i bez niego jakakolwiek zmiana w systemie to zgadywanie.
+
+Metryki retrievalu
+
+Do oceny jakości wyszukiwania stosuje się kilka standardowych metryk. Hit at k mierzy frakcję zapytań, dla których poprawny dokument znalazł się w pierwszych k wynikach. Mean Reciprocal Rank, znany jako MRR, liczy średnią odwrotność rangi pierwszego trafionego dokumentu, premiując systemy które umieszczają trafienia wysoko. Recall at k to udział poprawnych dokumentów znalezionych w top k wśród wszystkich relewantnych. NDCG czyli znormalizowany skumulowany zysk dyskontowany uwzględnia stopniowane etykiety i pozycję dokumentu w rankingu — najbardziej ogólna, ale też najtrudniejsza w interpretacji z tych metryk.
+
+Iteracja i śledzenie regresji
+
+Systemy wyszukiwania rozwija się iteracyjnie — zmienia się model embeddingów, rozmiar chunka, strategia indeksowania. Każda z tych zmian powinna być oceniana na tym samym golden set, żeby możliwe było porównywanie wariantów między sobą. W profesjonalnych projektach wyniki ewaluacji są zapisywane w plikach historycznych lub bazie danych, co pozwala śledzić trend jakości w czasie oraz szybko wykrywać regresje wprowadzone przez nowe zmiany. Eksperymenty bez takiego tracingu szybko mylą intuicję i prowadzą do decyzji podejmowanych na podstawie niewłaściwych założeń.

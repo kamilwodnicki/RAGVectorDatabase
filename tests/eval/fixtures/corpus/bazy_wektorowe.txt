@@ -1,0 +1,13 @@
+Bazy wektorowe i wyszukiwanie podobieństwa
+
+Rola bazy wektorowej
+
+Baza wektorowa to wyspecjalizowany system do przechowywania wektorów o wysokiej wymiarowości i efektywnego wyszukiwania tych, które są najbardziej podobne do wektora zapytania. W przeciwieństwie do klasycznych baz relacyjnych, nie operuje ona na kolumnach i wierszach, lecz na punktach w przestrzeni wielowymiarowej. Wykorzystywana jest najczęściej w aplikacjach opartych o embeddingi — systemach rekomendacyjnych, wyszukiwarkach semantycznych oraz systemach RAG. Bez wydajnej bazy wektorowej zapytania w realnym czasie stałyby się niepraktyczne przy większych zbiorach dokumentów.
+
+Algorytmy ANN i kompromis dokładność-szybkość
+
+Ponieważ dokładne wyszukiwanie najbliższych sąsiadów w wysokiej wymiarowości jest kosztowne, w praktyce stosuje się algorytmy przybliżone, tak zwane ANN czyli approximate nearest neighbors. Do najpopularniejszych należą HNSW oparty o hierarchiczne grafy nawigacyjne, IVF dzielący przestrzeń na klastry oraz drzewa Annoy. Każdy z tych algorytmów oferuje inny kompromis pomiędzy dokładnością zwracanych wyników, szybkością zapytania oraz zużyciem pamięci. Wybór odpowiedniego algorytmu zależy od wielkości zbioru, wymagań opóźnienia oraz tolerowalnego spadku recalla.
+
+Qdrant jako przykład
+
+Qdrant to napisana w Ruście baza wektorowa, która oferuje zarówno wyszukiwanie po wektorach, jak i filtrowanie po metadanych. Wspiera różne metryki odległości: iloczyn skalarny, kosinusowy oraz euklidesowy, oraz różne tryby pracy — od trybu w pamięci po persystencję na dysku i replikację. W kontekście polskojęzycznego RAG istotne jest wsparcie dla filtrowania po atrybutach, co pozwala ograniczyć wyszukiwanie do konkretnego autora, daty lub kategorii dokumentu. Qdrant obsługuje również storage kwantyzowany, co znacznie zmniejsza zużycie pamięci przy akceptowalnym spadku jakości wyników.

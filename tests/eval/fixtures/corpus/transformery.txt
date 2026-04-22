@@ -1,0 +1,13 @@
+Architektura transformerów
+
+Mechanizm uwagi
+
+Transformery to rodzina architektur sieci neuronowych wprowadzona w pracy Attention Is All You Need w roku 2017. Kluczowym elementem jest mechanizm uwagi, który pozwala modelowi ważyć istotność poszczególnych słów w sekwencji niezależnie od ich odległości. W odróżnieniu od wcześniejszych sieci rekurencyjnych, transformer przetwarza całą sekwencję równolegle, co znacznie przyspiesza uczenie na nowoczesnym sprzęcie z akceleratorami GPU. Uwaga wielogłowicowa pozwala modelowi jednocześnie skupiać się na różnych aspektach zależności między słowami.
+
+Modele BERT i generatywne GPT
+
+Na bazie architektury transformera powstały dwie wielkie rodziny modeli. BERT wykorzystuje wyłącznie część enkodującą i jest trenowany w sposób dwukierunkowy — predykcji maskowanych tokenów — co sprawia, że nadaje się świetnie do klasyfikacji, rozpoznawania encji oraz zadań związanych z rozumieniem tekstu. GPT wykorzystuje część dekodującą i jest trenowany autoregresywnie, przewidując kolejne tokeny, dzięki czemu naturalnie nadaje się do generowania tekstu. Oba podejścia skalowały się niezwykle dobrze i doprowadziły do powstania modeli o setkach miliardów parametrów.
+
+Fine-tuning i adaptacja domenowa
+
+Duże modele trenowane są na ogromnych korpusach ogólnych, ale do konkretnych zastosowań zwykle wymagają dostrojenia. Fine-tuning polega na kontynuacji uczenia modelu na mniejszym, wyspecjalizowanym zbiorze danych z danej dziedziny. W ostatnich latach popularność zyskały metody ograniczające koszt takiego dostrajania, na przykład LoRA, która uczy jedynie niewielkich macierzy dodatkowych zamiast modyfikować wszystkie wagi modelu. Dzięki takim technikom można adaptować duży model do specyficznego zadania dysponując zaledwie ułamkiem zasobów obliczeniowych potrzebnych do pełnego treningu.

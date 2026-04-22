@@ -1,0 +1,13 @@
+Podstawy uczenia maszynowego
+
+Definicja i założenia
+
+Uczenie maszynowe to poddziedzina sztucznej inteligencji, w której algorytmy nabywają zdolność rozwiązywania zadań przez analizę danych zamiast przez jawne zaprogramowanie reguł. Klasyczne programowanie wymaga od inżyniera opisania krok po kroku procedury prowadzącej do rezultatu; uczenie maszynowe zamiast tego wyznacza parametry modelu tak, by minimalizował błąd predykcji na zbiorze przykładów treningowych. To podejście okazuje się nieocenione w zadaniach, w których sformalizowanie reguł jest bardzo trudne lub wręcz niemożliwe — rozpoznawanie mowy, klasyfikacja obrazów, tłumaczenie maszynowe.
+
+Uczenie nadzorowane i nienadzorowane
+
+Najważniejszy podział algorytmów uczenia maszynowego dotyczy tego, czy dane wejściowe mają przypisane etykiety. W trybie nadzorowanym model dostaje pary wejście-wyjście i uczy się odwzorowania z domeny wejściowej na wyjściową; typowe przykłady to regresja liniowa, drzewa decyzyjne oraz sieci neuronowe ze sprzężeniem wstecznym. W trybie nienadzorowanym nie ma etykiet i zadaniem modelu jest znalezienie struktury ukrytej w danych, na przykład poprzez grupowanie obserwacji podobnych do siebie albo redukcję wymiarowości w celu wizualizacji. Istnieją też warianty pośrednie, takie jak uczenie półnadzorowane i uczenie przez wzmacnianie.
+
+Problem przetrenowania i regularyzacji
+
+Jednym z fundamentalnych problemów uczenia maszynowego jest przetrenowanie, czyli sytuacja w której model zapamiętuje dane treningowe zamiast uczyć się uogólnień. Przetrenowany model osiąga znakomitą dokładność na zbiorze treningowym, ale fatalnie radzi sobie z nowymi, niewidzianymi przykładami. Walka z przetrenowaniem wymaga zwykle regularyzacji — dodania do funkcji kosztu składnika karzącego zbyt duże wartości wag, zastosowania dropoutu w sieciach neuronowych albo zatrzymania uczenia we właściwym momencie dzięki monitorowaniu zbioru walidacyjnego.

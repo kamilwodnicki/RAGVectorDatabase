@@ -1,0 +1,13 @@
+Architektura systemów RAG
+
+Idea Retrieval Augmented Generation
+
+RAG to podejście, w którym duży model językowy otrzymuje jako kontekst fragmenty wyszukane w bazie wiedzy, zamiast polegać wyłącznie na tym co zapamiętał podczas treningu. System składa się z dwóch warstw: retrievera, który wyszukuje fragmenty powiązane z pytaniem użytkownika, oraz generatora, który formułuje odpowiedź na podstawie tych fragmentów. Kluczową zaletą takiego rozwiązania jest możliwość aktualizacji wiedzy bez retreningu modelu — wystarczy podmienić dokumenty w bazie. To również sposób na ograniczenie halucynacji, ponieważ model zamiast zgadywać cytuje rzeczywiste źródła.
+
+Chunking parent-child
+
+Jednym z fundamentalnych problemów w RAG jest odpowiedni podział dokumentów na fragmenty. W podejściu parent-child utrzymywane są dwa poziomy granulacji. Mniejsze fragmenty dzieci są embedowane i przeszukiwane w bazie wektorowej, co zapewnia wysoką precyzję dopasowania. Większe fragmenty rodzice są przechowywane osobno, zwykle w dokumentowej bazie danych, i to ich treść trafia do modelu językowego jako kontekst. Dzięki temu wyszukiwanie jest dokładne, a odpowiedź bogata w kontekst — rodzic niesie znacznie więcej informacji niż sam dziecko, co bywa krytyczne dla jakości wygenerowanej odpowiedzi.
+
+Wybór modelu embeddingów
+
+Skuteczność retrievera zależy w pierwszej kolejności od modelu embeddingów, który przekształca tekst w wektor liczbowy. Dla dokumentów polskich i wielojęzycznych dobrym wyborem jest multilingual-e5-base, trenowany na setkach języków jednocześnie i dający reprezentacje o wymiarze 768. Model ten wymaga dodania specjalnych prefiksów — passage dla dokumentów i query dla zapytań — co wpływa na jakość wyników w sposób niepomijalny. Alternatywą są modele tworzone specjalnie dla języka polskiego, takie jak HerBERT, choć te zwykle nie dorównują najlepszym modelom wielojęzycznym.
