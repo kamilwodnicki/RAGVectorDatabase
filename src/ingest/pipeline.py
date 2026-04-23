@@ -96,7 +96,10 @@ def _ingest_one_file(
                     "text": child.page_content,
                     "parent_id": child.metadata["parent_id"],
                     "source": child.metadata["source"],
+                    "filename": child.metadata["filename"],
+                    "file_extension": child.metadata["file_extension"],
                     "page": child.metadata.get("page"),
+                    "ingested_at": child.metadata["ingested_at"],
                 },
             ))
 

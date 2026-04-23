@@ -56,7 +56,14 @@ def query(request: QueryRequest):
             continue
         fragments.append(DocumentFragment(
             content=p["text"],
-            metadata={"source": p.get("source"), "page": p.get("page"), "parent_id": pid},
+            metadata={
+                "source": p.get("source"),
+                "filename": p.get("filename"),
+                "file_extension": p.get("file_extension"),
+                "page": p.get("page"),
+                "ingested_at": p.get("ingested_at"),
+                "parent_id": pid,
+            },
         ))
 
     return QueryResponse(results=fragments)

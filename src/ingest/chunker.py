@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from langchain_core.documents import Document
 from src.config import (
@@ -31,19 +32,26 @@ def chunk_file_elements(path: Path, elements) -> tuple[list[dict], list[Document
         separators=["\n\n", "\n", ". ", " ", ""],
     )
 
+    source = str(path)
+    filename = path.name
+    file_extension = path.suffix.lower().lstrip(".")
+    ingested_at = datetime.now(timezone.utc).isoformat()
+
     parents: list[dict] = []
     children: list[Document] = []
 
     for pc in parent_chunks:
         parent_id = str(uuid.uuid4())
         page = getattr(pc.metadata, "page_number", None)
-        source = str(path)
 
         parents.append({
             "_id": parent_id,
             "text": pc.text,
             "source": source,
+            "filename": filename,
+            "file_extension": file_extension,
             "page": page,
+            "ingested_at": ingested_at,
         })
 
         for child_text in child_splitter.split_text(pc.text):
@@ -52,7 +60,10 @@ def chunk_file_elements(path: Path, elements) -> tuple[list[dict], list[Document
                 metadata={
                     "parent_id": parent_id,
                     "source": source,
+                    "filename": filename,
+                    "file_extension": file_extension,
                     "page": page,
+                    "ingested_at": ingested_at,
                 },
             ))
 

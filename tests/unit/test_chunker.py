@@ -47,10 +47,15 @@ def test_parent_has_required_fields(fake_path):
     parents, _ = chunk_file_elements(fake_path, elements)
 
     p = parents[0]
-    assert set(p.keys()) >= {"_id", "text", "source", "page"}
+    assert set(p.keys()) >= {
+        "_id", "text", "source", "filename", "file_extension", "page", "ingested_at",
+    }
     assert isinstance(p["_id"], str) and len(p["_id"]) > 0
     assert p["source"] == str(fake_path)
+    assert p["filename"] == "fake.pdf"
+    assert p["file_extension"] == "pdf"
     assert p["text"]
+    assert p["ingested_at"]
 
 
 def test_every_child_carries_parent_id(fake_path):
@@ -70,6 +75,37 @@ def test_every_child_carries_source(fake_path):
 
     for child in children:
         assert child.metadata["source"] == str(fake_path)
+
+
+def test_every_child_carries_file_level_metadata(fake_path):
+    elements = _make_elements("Tytuł", "Treść.")
+    _, children = chunk_file_elements(fake_path, elements)
+
+    assert len(children) > 0
+    for child in children:
+        assert child.metadata["filename"] == "fake.pdf"
+        assert child.metadata["file_extension"] == "pdf"
+        assert child.metadata["ingested_at"]
+
+
+def test_txt_file_extension_is_normalized_lowercase_without_dot(tmp_path):
+    elements = _make_elements("Tytuł", "Treść.")
+    parents, children = chunk_file_elements(tmp_path / "Notes.TXT", elements)
+
+    assert parents[0]["file_extension"] == "txt"
+    for child in children:
+        assert child.metadata["file_extension"] == "txt"
+
+
+def test_all_chunks_of_single_file_share_ingested_at(fake_path):
+    long_text = " ".join(["słowo"] * 400)
+    elements = _make_elements("Sekcja A", long_text, "# Sekcja B", long_text)
+    parents, children = chunk_file_elements(fake_path, elements)
+
+    timestamps = {p["ingested_at"] for p in parents} | {
+        c.metadata["ingested_at"] for c in children
+    }
+    assert len(timestamps) == 1
 
 
 def test_parent_ids_are_unique(fake_path):

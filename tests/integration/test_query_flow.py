@@ -29,7 +29,11 @@ def test_query_returns_parent_matching_ingested_content(client, copy_fixture, so
     first = data["results"][0]
     assert "content" in first
     assert "metadata" in first
-    assert first["metadata"]["parent_id"]
+    meta = first["metadata"]
+    assert meta["parent_id"]
+    assert meta["filename"] == "rag_systems_pl.txt"
+    assert meta["file_extension"] == "txt"
+    assert meta["ingested_at"]
 
     combined = " ".join(r["content"] for r in data["results"]).lower()
     assert "parent" in combined or "dziec" in combined or "chunking" in combined
