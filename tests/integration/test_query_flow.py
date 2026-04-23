@@ -66,3 +66,70 @@ def test_query_resolves_children_back_to_distinct_parents(client, copy_fixture, 
     data = response.json()
     parent_ids = [r["metadata"]["parent_id"] for r in data["results"]]
     assert len(parent_ids) == len(set(parent_ids))
+
+
+def test_query_with_filename_filter_returns_only_matching_file(client, copy_fixture, source_dir):
+    from src.ingest.pipeline import run_sync
+
+    copy_fixture("machine_learning_pl.txt")
+    copy_fixture("rag_systems_pl.txt")
+    run_sync(source_dir=str(source_dir))
+
+    response = client.post(
+        "/query/",
+        json={
+            "query": "dokument",
+            "k": 10,
+            "filters": {"filename": "rag_systems_pl.txt"},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["results"]) > 0
+    for r in data["results"]:
+        assert r["metadata"]["filename"] == "rag_systems_pl.txt"
+
+
+def test_query_with_file_extension_filter(client, copy_fixture, source_dir):
+    from src.ingest.pipeline import run_sync
+
+    copy_fixture("rag_systems_pl.txt")
+    run_sync(source_dir=str(source_dir))
+
+    response = client.post(
+        "/query/",
+        json={"query": "cokolwiek", "k": 3, "filters": {"file_extension": "txt"}},
+    )
+
+    assert response.status_code == 200
+    for r in response.json()["results"]:
+        assert r["metadata"]["file_extension"] == "txt"
+
+
+def test_query_rejects_unknown_filter_field_with_400(client):
+    response = client.post(
+        "/query/",
+        json={"query": "x", "k": 1, "filters": {"not_a_field": "x"}},
+    )
+    assert response.status_code == 400
+    assert "nie jest dozwolone" in response.json()["detail"]
+
+
+def test_query_filter_with_no_matches_returns_empty(client, copy_fixture, source_dir):
+    from src.ingest.pipeline import run_sync
+
+    copy_fixture("rag_systems_pl.txt")
+    run_sync(source_dir=str(source_dir))
+
+    response = client.post(
+        "/query/",
+        json={
+            "query": "cokolwiek",
+            "k": 3,
+            "filters": {"filename": "nieistniejacy_plik.pdf"},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"results": []}

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from qdrant_client.models import SparseVector
+from qdrant_client.models import Filter, SparseVector
 
 from src.config import (
     COLLECTION_NAME,
@@ -33,19 +33,20 @@ def retrieve_children(
     mode: str,
     dense_embedder: E5HuggingFaceEmbeddings,
     sparse_embedder: BM25SparseEmbeddings | None,
+    query_filter: Filter | None = None,
 ) -> list[ChildHit]:
     mode = mode.lower()
     if mode not in VALID_MODES:
         raise ValueError(f"Nieznany RETRIEVAL_MODE '{mode}', dozwolone: {VALID_MODES}")
 
     if mode == "dense":
-        return _search_dense(query, k, dense_embedder)
+        return _search_dense(query, k, dense_embedder, query_filter)
     if mode == "sparse":
         _require_sparse_embedder(sparse_embedder, mode)
-        return _search_sparse(query, k, sparse_embedder)
+        return _search_sparse(query, k, sparse_embedder, query_filter)
 
     _require_sparse_embedder(sparse_embedder, mode)
-    return _search_hybrid(query, k, dense_embedder, sparse_embedder)
+    return _search_hybrid(query, k, dense_embedder, sparse_embedder, query_filter)
 
 
 def weighted_rrf(
@@ -65,7 +66,12 @@ def weighted_rrf(
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)[:k]
 
 
-def _search_dense(query: str, k: int, embedder: E5HuggingFaceEmbeddings) -> list[ChildHit]:
+def _search_dense(
+    query: str,
+    k: int,
+    embedder: E5HuggingFaceEmbeddings,
+    query_filter: Filter | None = None,
+) -> list[ChildHit]:
     vec = embedder.embed_query(query)
     response = get_client().query_points(
         collection_name=COLLECTION_NAME,
@@ -73,11 +79,17 @@ def _search_dense(query: str, k: int, embedder: E5HuggingFaceEmbeddings) -> list
         using=DENSE_VECTOR_NAME,
         limit=k,
         with_payload=True,
+        query_filter=query_filter,
     )
     return [_hit_to_child(h) for h in response.points]
 
 
-def _search_sparse(query: str, k: int, embedder: BM25SparseEmbeddings) -> list[ChildHit]:
+def _search_sparse(
+    query: str,
+    k: int,
+    embedder: BM25SparseEmbeddings,
+    query_filter: Filter | None = None,
+) -> list[ChildHit]:
     sp = embedder.embed_query(query)
     response = get_client().query_points(
         collection_name=COLLECTION_NAME,
@@ -85,6 +97,7 @@ def _search_sparse(query: str, k: int, embedder: BM25SparseEmbeddings) -> list[C
         using=SPARSE_VECTOR_NAME,
         limit=k,
         with_payload=True,
+        query_filter=query_filter,
     )
     return [_hit_to_child(h) for h in response.points]
 
@@ -94,14 +107,15 @@ def _search_hybrid(
     k: int,
     dense_embedder: E5HuggingFaceEmbeddings,
     sparse_embedder: BM25SparseEmbeddings,
+    query_filter: Filter | None = None,
 ) -> list[ChildHit]:
     # Pobieramy więcej kandydatów z każdej ścieżki niż docelowe k,
     # żeby fuzja miała z czego wybierać. Ani zbyt mało (utrata dokumentów
     # które są blisko topu tylko w jednym rankingu), ani zbyt dużo
     # (narzut computational).
     fetch = max(k * 3, 30)
-    dense_hits = _search_dense(query, fetch, dense_embedder)
-    sparse_hits = _search_sparse(query, fetch, sparse_embedder)
+    dense_hits = _search_dense(query, fetch, dense_embedder, query_filter)
+    sparse_hits = _search_sparse(query, fetch, sparse_embedder, query_filter)
 
     docs: dict[str, ChildHit] = {}
     for hit in dense_hits:

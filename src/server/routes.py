@@ -4,6 +4,7 @@ from src.config import API_DEVICE, RETRIEVAL_MODE
 from src.db.mongo import get_parents_collection
 from src.ingest.embeddings import E5HuggingFaceEmbeddings
 from src.ingest.sparse_embeddings import BM25SparseEmbeddings
+from src.retrieval.filters import InvalidFilterError, build_qdrant_filter
 from src.retrieval.hybrid import retrieve_children
 from src.server.schemas import DocumentFragment, QueryRequest, QueryResponse
 
@@ -23,12 +24,18 @@ def _get_sparse_embedder() -> BM25SparseEmbeddings | None:
 @router.post("/query/", response_model=QueryResponse)
 def query(request: QueryRequest):
     try:
+        qdrant_filter = build_qdrant_filter(request.filters)
+    except InvalidFilterError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
         children = retrieve_children(
             query=request.query,
             k=request.k,
             mode=RETRIEVAL_MODE,
             dense_embedder=_dense_embedder,
             sparse_embedder=_get_sparse_embedder(),
+            query_filter=qdrant_filter,
         )
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
