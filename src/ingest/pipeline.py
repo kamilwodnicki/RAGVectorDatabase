@@ -12,6 +12,7 @@ from src.config import (
     MONGODB_DB,
     MONGODB_FILES_METADATA_COLLECTION,
     PDF_SOURCE_DIR,
+    QDRANT_UPSERT_BATCH_SIZE,
     SPARSE_VECTOR_NAME,
     format_effective_config,
 )
@@ -103,7 +104,22 @@ def _ingest_one_file(
                 },
             ))
 
-        get_client().upsert(collection_name=COLLECTION_NAME, points=points)
+        try:
+            for i in range(0, len(points), QDRANT_UPSERT_BATCH_SIZE):
+                get_client().upsert(
+                    collection_name=COLLECTION_NAME,
+                    points=points[i:i + QDRANT_UPSERT_BATCH_SIZE],
+                )
+        except Exception:
+            # Rollback — usuń punkty które już zdążyły wejść, żeby nie zostawić orphans
+            try:
+                get_client().delete(
+                    collection_name=COLLECTION_NAME,
+                    points_selector=PointIdsList(points=child_ids),
+                )
+            except Exception:
+                pass
+            raise
 
     upsert_file_metadata(
         file_path=str(path),
