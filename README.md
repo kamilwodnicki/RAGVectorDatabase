@@ -469,7 +469,7 @@ HYBRID_SPARSE_WEIGHT=1.0
 EXTRACTION_STRATEGY=hi_res
 ```
 
-Wymaga `poppler-utils` w `Dockerfile` i `unstructured-inference` w `requirements/base.txt` (patrz [Strategie ekstrakcji](#strategie-ekstrakcji-pdf)).
+Wymaga doinstalowania `poppler-utils`, `tesseract-ocr` + paczek językowych w `Dockerfile` oraz `unstructured-inference` w `requirements/base.txt`. Pełna instrukcja krok po kroku w [Strategie ekstrakcji PDF](#strategie-ekstrakcji-pdf).
 
 ### Krótkie pytania wymagające precyzji
 
@@ -502,16 +502,93 @@ Renderuje każdą stronę jako obraz → `detectron2` wykrywa regiony layoutu (a
 
 **Używaj dla:** skanów, wielokolumnowych (gazety, magazyny), dokumentów gdzie tabele z liczbami są kluczowe, tekstu w grafikach.
 
-**Wymaga:**
-1. W `Dockerfile` odkomentuj `poppler-utils`:
-   ```dockerfile
-   RUN apt-get install -y poppler-utils
-   ```
-2. Dodaj do `requirements/base.txt`:
-   ```
-   unstructured-inference
-   ```
-3. `make build`
+**Czego potrzebuje (3 etapy ekstrakcji = 3 zestawy zależności):**
+
+| Etap | Zależność | Gdzie instalować |
+|------|-----------|------------------|
+| PDF → obrazy stron | `poppler-utils` | system (apt) — w `Dockerfile` |
+| Wykrycie layoutu | `unstructured-inference` | Python — w `requirements/base.txt` |
+| OCR regionów | `tesseract-ocr` + paczki językowe (`tesseract-ocr-pol`, `tesseract-ocr-eng`, …) | system (apt) — w `Dockerfile` |
+
+**Mapowanie kodów ISO → nazwa pakietu apt** (paczki językowe muszą zgadzać się z `EXTRACTION_LANGUAGES`):
+
+| Kod ISO | Pakiet apt |
+|---------|-----------|
+| `pol` | `tesseract-ocr-pol` |
+| `eng` | `tesseract-ocr-eng` |
+| `deu` | `tesseract-ocr-deu` |
+| `ukr` | `tesseract-ocr-ukr` |
+| `fra` | `tesseract-ocr-fra` |
+| `…`   | `tesseract-ocr-<kod>` |
+
+#### Krok po kroku — przełączenie z `fast` na `hi_res`
+
+**Krok 1.** W `Dockerfile` rozszerz blok `apt-get install` o `poppler-utils` i tesseracta. Pełna sekcja powinna wyglądać tak (dodajesz 4 ostatnie linie przed `&& rm -rf ...`, paczki językowe dopasuj do swojego `EXTRACTION_LANGUAGES`):
+
+```dockerfile
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    libgl1 \
+    libglib2.0-0 \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-pol \
+    tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+**Krok 2.** W `requirements/base.txt` dopisz na końcu:
+
+```
+unstructured-inference
+```
+
+**Krok 3.** Z hosta (poza kontenerem) przebuduj i uruchom obraz:
+
+```bash
+make down
+make build
+make up
+```
+
+`make down` jest istotne — bez niego `make up` używałby starego kontenera. Sam `make build` tworzy nowy obraz, ale dopiero `make up` go uruchamia.
+
+**Krok 4.** Włącz `hi_res`. Dwie opcje:
+
+A) **Per-ingest** (jednorazowo, bez zmian w `.env`):
+
+```bash
+make shell
+python manage.py ingest run --strategy hi_res
+```
+
+B) **Domyślnie dla wszystkich ingestów** — w `.env`:
+
+```
+EXTRACTION_STRATEGY=hi_res
+```
+
+Po zmianie `.env`: `make down && make up` (zmienne env są wstrzykiwane przy starcie kontenera).
+
+**Krok 5.** Weryfikacja przed pierwszym ingestem:
+
+```bash
+make shell
+tesseract --list-langs
+```
+
+Powinno pokazać twoje języki (np. `pol`, `eng`) plus `osd` (default tesseracta). Jeśli któregoś brakuje — dopisz odpowiedni `tesseract-ocr-<kod>` do `Dockerfile` i powtórz Krok 3.
+
+#### Najczęstsze błędy
+
+| Błąd | Przyczyna | Fix |
+|------|-----------|-----|
+| `tesseract is not installed or its not in your PATH` | Brak systemowego binarza `tesseract-ocr` | Krok 1 (paczka `tesseract-ocr` w apt) + Krok 3 |
+| `Error opening data file ... pol.traineddata` | Brak paczki językowej | Dodaj `tesseract-ocr-pol` do `Dockerfile` + Krok 3 |
+| `pdf2image.exceptions.PDFInfoNotInstalledError` | Brak `poppler-utils` | Dodaj `poppler-utils` do `Dockerfile` + Krok 3 |
+| `ModuleNotFoundError: No module named 'unstructured_inference'` | Brak Pythonowego pakietu | Dodaj `unstructured-inference` do `requirements/base.txt` + Krok 3 |
+| Wszystko wygląda dobrze, ale ingest super wolny | `hi_res` jest z natury 10–50× wolniejszy od `fast` | To normalne. Używaj `hi_res` tylko dla dokumentów które tego wymagają (skany, wielokolumnowe). |
 
 ### Języki
 
