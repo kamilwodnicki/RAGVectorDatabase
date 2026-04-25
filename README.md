@@ -17,6 +17,7 @@ System RAG (Retrieval-Augmented Generation) dla dokumentów wielojęzycznych —
 - [Proponowane ustawienia](#proponowane-ustawienia)
 - [Strategie ekstrakcji PDF](#strategie-ekstrakcji-pdf)
 - [Tuning — co zmienić kiedy](#tuning--co-zmienić-kiedy)
+- [Logi](#logi)
 - [Testy](#testy)
 - [Struktura projektu](#struktura-projektu)
 - [Troubleshooting](#troubleshooting)
@@ -610,6 +611,74 @@ Diagnozuj przez `make test-eval` — golden set pokazuje Hit@1/3/5, MRR i per-qu
 | Ingest mieli godzinami | Sprawdź że `INGEST_DEVICE=cuda` | Przejdź na `fast` strategy jeśli jest `hi_res` |
 
 Po każdej zmianie wag / chunkingu rób `ingest rebuild` lub przynajmniej `db setup --recreate`, żeby evaluacja była na świeżych danych.
+
+---
+
+## Logi
+
+Aplikacja loguje równolegle do **dwóch miejsc**:
+
+| Cel | Co | Przeżywa restart kontenera? |
+|-----|-----|----------------------------|
+| `./logs/app.log` (na hoście) | Plik tekstowy z **codzienną rotacją** o północy. Archiwa: `app.log.YYYY-MM-DD`. Domyślnie 14 dni historii. | Tak — to volume mount |
+| stdout kontenera | Ten sam strumień; `make logs` / `docker logs rag-server` | Tylko dopóki kontener istnieje |
+
+**Po crashu zaglądaj do `./logs/app.log`** — `make logs` pokaże pustkę bo procesu już nie ma, a plik zostanie. Plik kończy się na ostatnim wpisie tuż przed śmiercią procesu, w tym pełnym tracebackiem niezłapanych wyjątków (`sys.excepthook` przechwytuje je przed wyjściem Pythona).
+
+### Format
+
+```
+2026-04-25 14:32:17 [INFO] src.ingest.pipeline: ADD DOKUMENTY/raport.pdf (12 parents / 348 children)
+2026-04-25 14:32:18 [ERROR] src.ingest.pipeline: ERR-ADD DOKUMENTY/skan.pdf: tesseract is not installed
+Traceback (most recent call last):
+  File "/app/src/ingest/pipeline.py", line 189, in run_sync
+  ...
+```
+
+### Konfiguracja (`.env`)
+
+| Zmienna | Default | Opis |
+|---------|---------|------|
+| `LOG_LEVEL` | `INFO` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` \| `CRITICAL` |
+| `LOG_DIR` | `/app/logs` | Katalog wewnątrz kontenera (zmapowany na `./logs` na hoście) |
+| `LOG_BACKUP_DAYS` | `14` | Ile dni archiwów trzymać. Po tym czasie najstarszy `app.log.YYYY-MM-DD` jest kasowany przy najbliższej rotacji. |
+
+Zmiana `LOG_LEVEL=DEBUG` da wglądnie w bardzo szczegółowe logi (przydatne przy debug, ale plik puchnie szybciej). Po edycji `.env` → `make down && make up`.
+
+### Przydatne komendy
+
+```bash
+# Co się stało ostatnio
+tail -100 ./logs/app.log
+
+# Śledzenie na żywo (alternatywa dla make logs)
+tail -f ./logs/app.log
+
+# Tylko błędy
+grep ERROR ./logs/app.log
+
+# Wszystkie pliki logu (po rotacji — bieżący + archiwa dzienne)
+ls -lh ./logs/
+# Przykład: app.log  app.log.2026-04-24  app.log.2026-04-23  ...
+
+# Co się działo wczoraj
+less ./logs/app.log.$(date -d yesterday +%Y-%m-%d)
+```
+
+### Co jest logowane
+
+- **Każdy ingest pojedynczego pliku** (`ADD`/`UPD`/`DEL`/`SKIP`) z liczbą parentów/children
+- **Każde zapytanie do API** (`/query/`) z `k`, `mode`, filtrami, początkiem treści query (200 znaków)
+- **Każdy błąd** z `exc_info=True` (pełny traceback)
+- **Niezłapane wyjątki** przed śmiercią procesu (poziom `CRITICAL`)
+- **Konfiguracja loggera** przy starcie (potwierdza że logowanie zostało uruchomione)
+
+### Czego NIE jest logowane
+
+- Pełne treści zwracanych dokumentów (za duże, niepotrzebne dla debugowania)
+- Pełne payloady requestów do Qdranta
+- Embeddingi
+- Sekrety z `.env` (typer/uvicorn nie wypisują ich)
 
 ---
 

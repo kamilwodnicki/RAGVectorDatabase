@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from src.config import API_DEVICE, RETRIEVAL_MODE
@@ -8,6 +10,7 @@ from src.retrieval.filters import InvalidFilterError, build_qdrant_filter
 from src.retrieval.hybrid import retrieve_children
 from src.server.schemas import DocumentFragment, QueryRequest, QueryResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _dense_embedder = E5HuggingFaceEmbeddings(device=API_DEVICE)
@@ -23,9 +26,14 @@ def _get_sparse_embedder() -> BM25SparseEmbeddings | None:
 
 @router.post("/query/", response_model=QueryResponse)
 def query(request: QueryRequest):
+    logger.info(
+        "Query: k=%d mode=%s filters=%s query=%r",
+        request.k, RETRIEVAL_MODE, request.filters, request.query[:200],
+    )
     try:
         qdrant_filter = build_qdrant_filter(request.filters)
     except InvalidFilterError as e:
+        logger.warning("Filtr odrzucony: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
@@ -38,6 +46,7 @@ def query(request: QueryRequest):
             query_filter=qdrant_filter,
         )
     except Exception as e:
+        logger.error("Retrieval failed: %s", e, exc_info=True)
         raise HTTPException(status_code=503, detail=str(e))
 
     seen: set[str] = set()

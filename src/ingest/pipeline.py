@@ -1,8 +1,11 @@
+import logging
 import uuid
 from pathlib import Path
 
 import typer
 from qdrant_client.models import PointIdsList, PointStruct, SparseVector
+
+logger = logging.getLogger(__name__)
 
 from src.config import (
     COLLECTION_NAME,
@@ -142,8 +145,18 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
         evaluations = [evaluate_file_status(str(p)) for p in physical]
         deletions = find_deleted_files(physical_strs)
     except MetadataStoreError as e:
+        logger.error("Metadata-store nieosiągalny: %s", e, exc_info=True)
         typer.secho(f"BŁĄD metadata-store: {e}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
+
+    logger.info(
+        "Start synchronizacji: source=%s strategy=%s nowych=%d zmienionych=%d usuniętych=%d bez_zmian=%d",
+        source_dir, strategy,
+        sum(1 for e in evaluations if e.action == FileAction.ADD),
+        sum(1 for e in evaluations if e.action == FileAction.UPDATE),
+        len(deletions),
+        sum(1 for e in evaluations if e.action == FileAction.SKIP),
+    )
 
     to_add = [e for e in evaluations if e.action == FileAction.ADD]
     to_update = [e for e in evaluations if e.action == FileAction.UPDATE]
@@ -164,14 +177,17 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
         try:
             _delete_file_vectors(ev.old_parent_doc_ids, ev.old_child_vector_ids)
             delete_file_metadata(ev.file_path)
+            logger.info("DEL %s", ev.file_path)
             typer.echo(f"  [DEL] {ev.file_path}")
         except Exception as e:
+            logger.error("ERR-DEL %s: %s", ev.file_path, e, exc_info=True)
             typer.secho(f"  [ERR-DEL] {ev.file_path}: {e}", fg=typer.colors.RED)
 
     for ev in to_update:
         try:
             _delete_file_vectors(ev.old_parent_doc_ids, ev.old_child_vector_ids)
         except Exception as e:
+            logger.error("ERR-UPD-CLEAN %s: %s", ev.file_path, e, exc_info=True)
             typer.secho(f"  [ERR-UPD-CLEAN] {ev.file_path}: {e}", fg=typer.colors.RED)
 
     to_process = to_add + to_update
@@ -187,8 +203,13 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
                     path, strategy, ev.content_hash, dense_embedder, sparse_embedder
                 )
                 if not parent_ids and not child_ids:
+                    logger.warning("WARN %s: brak wyekstrahowanych elementów", ev.file_path)
                     typer.secho(f"  [WARN] {ev.file_path}: brak wyekstrahowanych elementów", fg=typer.colors.YELLOW)
                     continue
+                logger.info(
+                    "%s %s (%d parents / %d children)",
+                    label, ev.file_path, len(parent_ids), len(child_ids),
+                )
                 typer.echo(
                     f"  [{label}] {ev.file_path} ({len(parent_ids)}p / {len(child_ids)}c)"
                 )
@@ -197,7 +218,10 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
                     mark_file_error(ev.file_path, ev.content_hash)
                 except MetadataStoreError:
                     pass
+                logger.error("ERR-%s %s: %s", label, ev.file_path, e, exc_info=True)
                 typer.secho(f"  [ERR-{label}] {ev.file_path}: {e}", fg=typer.colors.RED)
+
+    logger.info("Synchronizacja zakończona.")
 
     typer.secho("Synchronizacja zakończona.", fg=typer.colors.GREEN)
 

@@ -32,6 +32,7 @@ services:
     volumes:
       - .:/app
       - ./DOKUMENTY:/app/DOKUMENTY
+      - ./logs:/app/logs
     ports:
       - "8000:8000"
     deploy:
@@ -60,6 +61,9 @@ services:
       - SPARSE_MODEL_NAME=${SPARSE_MODEL_NAME:-Qdrant/bm25}
       - EXTRACTION_STRATEGY=${EXTRACTION_STRATEGY:-fast}
       - EXTRACTION_LANGUAGES=${EXTRACTION_LANGUAGES:-pol,eng}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_DIR=${LOG_DIR:-/app/logs}
+      - LOG_BACKUP_DAYS=${LOG_BACKUP_DAYS:-14}
     stdin_open: true
     tty: true
 

@@ -1,6 +1,8 @@
 __pycache__
 DOKUMENTY
 qdrant_storage
+logs/*
+!logs/.gitkeep
 .env
 .idea
 .claude

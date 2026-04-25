@@ -2,6 +2,9 @@ import typer
 import uvicorn
 from src.commands import db, ingest
 from src.config import format_effective_config
+from src.logging_config import setup_logging
+
+setup_logging()
 
 app = typer.Typer(help="System Zarządzania RAG")
 
