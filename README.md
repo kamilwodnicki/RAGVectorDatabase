@@ -589,7 +589,62 @@ Powinno pokazać twoje języki (np. `pol`, `eng`) plus `osd` (default tesseracta
 | `Error opening data file ... pol.traineddata` | Brak paczki językowej | Dodaj `tesseract-ocr-pol` do `Dockerfile` + Krok 3 |
 | `pdf2image.exceptions.PDFInfoNotInstalledError` | Brak `poppler-utils` | Dodaj `poppler-utils` do `Dockerfile` + Krok 3 |
 | `ModuleNotFoundError: No module named 'unstructured_inference'` | Brak Pythonowego pakietu | Dodaj `unstructured-inference` do `requirements/base.txt` + Krok 3 |
-| Wszystko wygląda dobrze, ale ingest super wolny | `hi_res` jest z natury 10–50× wolniejszy od `fast` | To normalne. Używaj `hi_res` tylko dla dokumentów które tego wymagają (skany, wielokolumnowe). |
+| Wszystko wygląda dobrze, ale ingest super wolny | `hi_res` jest z natury 10–50× wolniejszy od `fast` | To normalne. Używaj `hi_res` tylko dla dokumentów które tego wymagają (skany, wielokolumnowe). Jeśli wciąż za wolno — sprawdź sekcję "Weryfikacja GPU" niżej. |
+
+#### Weryfikacja GPU dla layout detection (KRYTYCZNE dla wydajności)
+
+`hi_res` ma trzy etapy per strona: render PDF → bitmapa, **layout detection (detectron2)**, OCR (tesseract). Etap środkowy to model CV który **musi** lecieć na GPU — na CPU jest **10–50× wolniejszy**. Jeśli detectron2 cicho się cofnie do CPU, masz 100 stron za 30–90 minut zamiast 3–5 minut.
+
+Najgorsze: nikt Cię o tym nie poinformuje. Ingest "po prostu działa" — tylko bardzo, bardzo wolno.
+
+**Diagnoza w 30 sekund:**
+
+```bash
+make shell
+python -c "
+import torch
+print('torch CUDA available:', torch.cuda.is_available())
+print('torch CUDA version :', torch.version.cuda)
+from unstructured_inference.models.base import get_model
+m = get_model('yolox')
+device = next(m.model.parameters()).device
+print('detectron2 device  :', device)
+"
+```
+
+**Co powinieneś zobaczyć (poprawnie):**
+
+```
+torch CUDA available: True
+torch CUDA version : 11.8
+detectron2 device  : cuda:0
+```
+
+**Co oznacza, że jest źle:**
+
+| Output | Diagnoza | Fix |
+|--------|----------|-----|
+| `torch CUDA available: False` + `torch CUDA version: None` | Masz CPU-only wariant PyTorcha | Sprawdź `CUDA_VARIANT` w `.env` — jeśli `cpu`, zmień na `cu118` lub `cu126`. Po zmianie: `make down && make build && make up`. |
+| `torch CUDA available: True` ale `detectron2 device: cpu` | Torch widzi GPU, ale detectron2 z jakiegoś powodu poszedł na CPU | Restart kontenera (`make down && make up`). Jeśli nie pomoże — sprawdź `nvidia-smi` na hoście, czy karta nie jest zajęta przez inny proces, który blokuje CUDA. |
+| Komenda wywala `ModuleNotFoundError: unstructured_inference` | Pakiet niedoinstalowany | Patrz Krok 2 wyżej (dodaj `unstructured-inference` do `requirements/base.txt`). |
+| `nvidia-smi` na hoście nie widzi karty | Sterownik / NVIDIA Container Toolkit nie skonfigurowany | Patrz [Konfiguracja GPU](#konfiguracja-gpu). |
+
+**Empiryczna kontrola czasu (test na kilku stronach):**
+
+```bash
+make shell
+time python -c "
+from unstructured.partition.pdf import partition_pdf
+elements = partition_pdf('DOKUMENTY/twoj_plik.pdf', strategy='hi_res', languages=['pol'])
+print(f'{len(elements)} elementów')
+"
+```
+
+Orientacyjnie:
+- **GPU OK**: ~2–5 sekund per strona
+- **CPU silent fallback**: ~30–90 sekund per strona
+
+Jeśli masz drugi wariant — wracaj do diagnostyki wyżej.
 
 ### Języki
 
