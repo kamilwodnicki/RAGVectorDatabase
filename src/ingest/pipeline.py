@@ -1,5 +1,6 @@
 import logging
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 import typer
@@ -24,6 +25,7 @@ from src.db.collection import setup_collection
 from src.db.metadata_store import (
     FileAction,
     MetadataStoreError,
+    _compute_file_hash,
     delete_file_metadata,
     evaluate_file_status,
     find_deleted_files,
@@ -35,6 +37,16 @@ from src.extractor.pipeline import extract_single_file
 from src.ingest.chunker import chunk_file_elements
 from src.ingest.embeddings import E5HuggingFaceEmbeddings
 from src.ingest.sparse_embeddings import BM25SparseEmbeddings
+
+
+SUPPORTED_EXTENSIONS = (".pdf", ".txt")
+
+
+@dataclass
+class SingleFileResult:
+    parent_ids: list[str]
+    child_ids: list[str]
+    replaced_existing: bool
 
 
 def _ensure_cuda() -> None:
@@ -238,3 +250,79 @@ def run_rebuild(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STR
     typer.echo(f"  MongoDB: wyczyszczono '{MONGODB_DB}.parents' i '{MONGODB_DB}.{MONGODB_FILES_METADATA_COLLECTION}'")
 
     run_sync(source_dir=source_dir, strategy=strategy)
+
+
+def run_single_file(
+    file_path: str,
+    strategy: str = EXTRACTION_STRATEGY,
+) -> SingleFileResult:
+    """Wymusza reprocess jednego pliku — niezależnie od hash w metadata store.
+
+    Stary stan (jeśli istnieje w metadata store) zostaje wyczyszczony z Qdranta i Mongo,
+    plik jest re-ekstrahowany, re-embedowany i zapisany od zera.
+
+    Raises:
+        FileNotFoundError: ścieżka nie istnieje lub nie jest plikiem.
+        ValueError: nieobsługiwane rozszerzenie (dozwolone: .pdf, .txt).
+        RuntimeError: brak GPU (CUDA niedostępne).
+        MetadataStoreError: błąd komunikacji z Mongo.
+    """
+    if INGEST_DEVICE is None:
+        raise RuntimeError("Ingest wymaga GPU (CUDA), ale jest niedostępne.")
+
+    path = Path(file_path)
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"Plik nie istnieje lub nie jest plikiem: {file_path}")
+
+    if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        raise ValueError(
+            f"Nieobsługiwane rozszerzenie '{path.suffix}'. "
+            f"Dozwolone: {', '.join(SUPPORTED_EXTENSIONS)}"
+        )
+
+    setup_collection(recreate=False)
+
+    metadata_col = get_mongo_client()[MONGODB_DB][MONGODB_FILES_METADATA_COLLECTION]
+    existing = metadata_col.find_one({"file_path": str(path)})
+    replaced = bool(existing)
+
+    if existing:
+        old_parent_ids = existing.get("parent_doc_ids", [])
+        old_child_ids = existing.get("child_vector_ids", [])
+        if old_parent_ids or old_child_ids:
+            try:
+                _delete_file_vectors(old_parent_ids, old_child_ids)
+                logger.info(
+                    "FILE-CLEAN %s: usunięto %d parents / %d children",
+                    path, len(old_parent_ids), len(old_child_ids),
+                )
+            except Exception as e:
+                logger.error("FILE-ERR-CLEAN %s: %s", path, e, exc_info=True)
+                raise
+
+    content_hash = _compute_file_hash(str(path))
+    dense_embedder = E5HuggingFaceEmbeddings(device=INGEST_DEVICE)
+    sparse_embedder = BM25SparseEmbeddings()
+
+    try:
+        parent_ids, child_ids = _ingest_one_file(
+            path, strategy, content_hash, dense_embedder, sparse_embedder,
+        )
+    except Exception as e:
+        try:
+            mark_file_error(str(path), content_hash)
+        except MetadataStoreError:
+            pass
+        logger.error("FILE-ERR %s: %s", path, e, exc_info=True)
+        raise
+
+    logger.info(
+        "FILE-DONE %s strategy=%s parents=%d children=%d replaced=%s",
+        path, strategy, len(parent_ids), len(child_ids), replaced,
+    )
+
+    return SingleFileResult(
+        parent_ids=parent_ids,
+        child_ids=child_ids,
+        replaced_existing=replaced,
+    )

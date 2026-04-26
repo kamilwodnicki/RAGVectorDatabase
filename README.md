@@ -224,6 +224,34 @@ Błąd na jednym pliku nie przerywa operacji — plik dostaje `status: ERROR` w 
 - Dodanie nowych pól metadata, które muszą być obecne na wszystkich punktach
 - Podejrzenie niespójności między Qdrant/Mongo/metadata store
 
+#### `ingest file <ścieżka>` — wymuszony reprocess pojedynczego pliku
+
+```bash
+# Przeprocesuj jeden plik (strategia z .env)
+python manage.py ingest file ./DOKUMENTY/raport.pdf
+
+# Z konkretną strategią — np. ten skan przez hi_res, reszta korpusu może iść na fast
+python manage.py ingest file ./DOKUMENTY/skan.pdf --strategy hi_res
+```
+
+**Co robi:**
+- Wymusza pełen reprocess **niezależnie od hash** — nawet jeśli plik się nie zmienił
+- Jeśli plik był wcześniej w bazie → kasuje stare children (Qdrant) + parents (Mongo) → indeksuje od nowa
+- Jeśli plik był nowy → po prostu indeksuje (zachowuje się jak ADD)
+- Inne pliki w bazie pozostają nietknięte
+- Pojedynczy plik = brak konfirmacji (operacja tania, niska blast radius)
+
+**Use cases:**
+- "Ten dokument wyszedł krzywo, chcę spróbować z `--strategy hi_res`"
+- "Plik jest w stanie ERROR po crashu — retry bez touchowania"
+- "Dla testów chcę zmieniać chunking jednego pliku, nie reindexując całego korpusu"
+- "Mam mieszany korpus — większość PDF-ów natywnych chcę puścić przez `fast`, a 2-3 skany przez `hi_res`"
+
+**Błędy:**
+- Plik nie istnieje → `BŁĄD: Plik nie istnieje lub nie jest plikiem: ...` (exit 1)
+- Nieobsługiwane rozszerzenie → `BŁĄD: Nieobsługiwane rozszerzenie '.json'. Dozwolone: .pdf, .txt`
+- Brak GPU → `BŁĄD: Ingest wymaga GPU (CUDA), ale jest niedostępne.`
+
 ### `serve` — API
 
 ```bash
@@ -341,6 +369,64 @@ curl -X POST http://localhost:8000/query/ \
     }
   }'
 ```
+
+### `POST /ingest/file/`
+
+Wymusza reprocess pojedynczego pliku — odpowiednik CLI `python manage.py ingest file <path>`, ale wywoływany przez HTTP. Przydatne gdy panel admina / inna usługa chce zlecić "przetwórz mi ten konkretny dokument" bez SSH do kontenera.
+
+**Request:**
+
+```json
+{
+  "path": "DOKUMENTY/raport.pdf",
+  "strategy": "hi_res"
+}
+```
+
+- `path` — ścieżka do pliku **wewnątrz katalogu `DOKUMENTY/`** (wymagane). Może być relatywna (z punktu widzenia procesu serwera, czyli `/app/`) lub absolutna. **Defense-in-depth:** ścieżki spoza `PDF_SOURCE_DIR` są odrzucane (`HTTP 400`) żeby klient nie mógł trigerować odczytu dowolnych plików z systemu.
+- `strategy` — opcjonalna, jeśli pominiesz → użyte zostanie `EXTRACTION_STRATEGY` z `.env`. Wartości: `fast` \| `hi_res`. Pozwala wymusić inną strategię niż globalna ("ten jeden skan przez `hi_res`, reszta korpusu domyślnie `fast`").
+
+**Response (200 OK):**
+
+```json
+{
+  "path": "/app/DOKUMENTY/raport.pdf",
+  "strategy": "hi_res",
+  "parents_count": 12,
+  "children_count": 348,
+  "replaced_existing": true
+}
+```
+
+- `replaced_existing` — `true` jeśli plik już był w bazie (stare dane skasowane przed reingest), `false` jeśli to pierwszy raz.
+
+**Kody błędów:**
+
+| Kod | Kiedy | Detail |
+|-----|-------|--------|
+| `400` | Ścieżka spoza `DOKUMENTY/` | `"Ścieżka musi być wewnątrz katalogu '...'"` |
+| `400` | Nieobsługiwane rozszerzenie | `"Nieobsługiwane rozszerzenie '.json'. Dozwolone: .pdf, .txt"` |
+| `404` | Plik nie istnieje | `"Plik nie istnieje lub nie jest plikiem: ..."` |
+| `503` | Brak GPU lub awaria Mongo | `"Ingest wymaga GPU (CUDA), ale jest niedostępne."` lub komunikat Mongo |
+| `500` | Niespodziewany błąd ingestu | Pełny traceback w `./logs/app.log` |
+
+**Przykład curl:**
+
+```bash
+# Reprocess z domyślną strategią (.env)
+curl -X POST http://localhost:8000/ingest/file/ \
+  -H "Content-Type: application/json" \
+  -d '{"path": "DOKUMENTY/raport.pdf"}'
+
+# Override strategii — ten jeden plik przez hi_res
+curl -X POST http://localhost:8000/ingest/file/ \
+  -H "Content-Type: application/json" \
+  -d '{"path": "DOKUMENTY/skan.pdf", "strategy": "hi_res"}'
+```
+
+**Uwaga o latencji:** ingest to operacja synchroniczna i może trwać **minuty** (zwłaszcza `hi_res` na dużych PDF-ach). Klient HTTP musi mieć odpowiedni timeout. Jeśli klient się rozłączy w trakcie — proces ingestu na serwerze nadal się dokończy, dane wylądują w bazie, a wynik znajdziesz w `./logs/app.log` (`FILE-DONE ...`).
+
+**Bezpieczeństwo:** endpoint jest **otwarty** (jak `/query/`) — w wdrożeniu produkcyjnym wystaw go tylko za firewallem / VPN-em / proxy z auth. Może wywołać kosztowną operację (GPU, pisanie do bazy), więc nie powinien być publicznie dostępny.
 
 ### OpenAPI / Swagger
 

@@ -1,14 +1,23 @@
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from src.config import API_DEVICE, RETRIEVAL_MODE
+from src.config import API_DEVICE, EXTRACTION_STRATEGY, PDF_SOURCE_DIR, RETRIEVAL_MODE
+from src.db.metadata_store import MetadataStoreError
 from src.db.mongo import get_parents_collection
 from src.ingest.embeddings import E5HuggingFaceEmbeddings
+from src.ingest.pipeline import run_single_file
 from src.ingest.sparse_embeddings import BM25SparseEmbeddings
 from src.retrieval.filters import InvalidFilterError, build_qdrant_filter
 from src.retrieval.hybrid import retrieve_children
-from src.server.schemas import DocumentFragment, QueryRequest, QueryResponse
+from src.server.schemas import (
+    DocumentFragment,
+    IngestFileRequest,
+    IngestFileResponse,
+    QueryRequest,
+    QueryResponse,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -83,3 +92,48 @@ def query(request: QueryRequest):
         ))
 
     return QueryResponse(results=fragments)
+
+
+@router.post("/ingest/file/", response_model=IngestFileResponse)
+def ingest_file(request: IngestFileRequest):
+    """Wymusza reprocess jednego pliku — kasuje stare dane i indeksuje od nowa.
+
+    Ścieżka MUSI być wewnątrz katalogu PDF_SOURCE_DIR (DOKUMENTY/) — defense-in-depth
+    żeby klient nie mógł czytać dowolnych plików z systemu.
+    """
+    strategy = request.strategy or EXTRACTION_STRATEGY
+    logger.info("Ingest request: path=%s strategy=%s", request.path, strategy)
+
+    source_root = Path(PDF_SOURCE_DIR).resolve()
+    try:
+        requested = Path(request.path).resolve()
+        requested.relative_to(source_root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ścieżka musi być wewnątrz katalogu '{PDF_SOURCE_DIR}'",
+        )
+
+    try:
+        result = run_single_file(str(requested), strategy=strategy)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        # Brak GPU
+        raise HTTPException(status_code=503, detail=str(e))
+    except MetadataStoreError as e:
+        logger.error("Metadata store error: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error("Ingest failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return IngestFileResponse(
+        path=str(requested),
+        strategy=strategy,
+        parents_count=len(result.parent_ids),
+        children_count=len(result.child_ids),
+        replaced_existing=result.replaced_existing,
+    )
