@@ -20,7 +20,14 @@ def run(
     strategy: str = typer.Option(EXTRACTION_STRATEGY, "--strategy", help="Strategia ekstrakcji PDF: fast | hi_res"),
 ):
     """Inkrementalna synchronizacja — dodaje nowe, aktualizuje zmienione, usuwa skasowane."""
-    run_sync(source_dir=source_dir, strategy=strategy)
+    try:
+        run_sync(source_dir=source_dir, strategy=strategy)
+    except RuntimeError as e:
+        typer.secho(f"BŁĄD: {e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    except MetadataStoreError as e:
+        typer.secho(f"BŁĄD metadata-store: {e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
 
 @app.command("rebuild")
@@ -42,7 +49,14 @@ def rebuild(
         typer.secho("Anulowano.", fg=typer.colors.YELLOW)
         raise typer.Abort()
 
-    run_rebuild(source_dir=source_dir, strategy=strategy)
+    try:
+        run_rebuild(source_dir=source_dir, strategy=strategy)
+    except RuntimeError as e:
+        typer.secho(f"BŁĄD: {e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    except MetadataStoreError as e:
+        typer.secho(f"BŁĄD metadata-store: {e}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
 
 @app.command("file")

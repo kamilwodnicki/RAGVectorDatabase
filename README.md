@@ -370,63 +370,116 @@ curl -X POST http://localhost:8000/query/ \
   }'
 ```
 
-### `POST /ingest/file/`
+### `POST /ingest/sync/`
 
-Wymusza reprocess pojedynczego pliku — odpowiednik CLI `python manage.py ingest file <path>`, ale wywoływany przez HTTP. Przydatne gdy panel admina / inna usługa chce zlecić "przetwórz mi ten konkretny dokument" bez SSH do kontenera.
+Synchronizacja korpusu — odpowiednik CLI `ingest run` (bez `paths`) lub `ingest file` (z `paths`). Jeden endpoint dwa zachowania, dobierane na podstawie obecności pola `paths`.
 
 **Request:**
 
 ```json
 {
-  "path": "DOKUMENTY/raport.pdf",
+  "paths": ["DOKUMENTY/raport.pdf", "DOKUMENTY/skan.pdf"],
   "strategy": "hi_res"
 }
 ```
 
-- `path` — ścieżka do pliku **wewnątrz katalogu `DOKUMENTY/`** (wymagane). Może być relatywna (z punktu widzenia procesu serwera, czyli `/app/`) lub absolutna. **Defense-in-depth:** ścieżki spoza `PDF_SOURCE_DIR` są odrzucane (`HTTP 400`) żeby klient nie mógł trigerować odczytu dowolnych plików z systemu.
-- `strategy` — opcjonalna, jeśli pominiesz → użyte zostanie `EXTRACTION_STRATEGY` z `.env`. Wartości: `fast` \| `hi_res`. Pozwala wymusić inną strategię niż globalna ("ten jeden skan przez `hi_res`, reszta korpusu domyślnie `fast`").
+- `paths` — opcjonalne. **Brak / pusta lista** → pełen incremental sync całego `DOKUMENTY/` (akcje ADD/UPDATE/SKIP/DELETE jak w `ingest run`). **Z listą** → reprocess **tylko podanych plików**, każdy wymuszony niezależnie od hash (jak `ingest file <path>` w pętli). Bez SKIP/DELETE w drugim trybie.
+- `strategy` — opcjonalna, default `EXTRACTION_STRATEGY` z `.env`. Wartości: `fast` \| `hi_res`. Override globalnej strategii dla tego wywołania.
+
+**Defense-in-depth:** ścieżki w `paths` MUSZĄ być wewnątrz `PDF_SOURCE_DIR` (`DOKUMENTY/`). Pierwsza ścieżka spoza katalogu → cały request odrzucony jako `HTTP 400`. Klient nie może triggerować odczytu dowolnych plików z systemu.
 
 **Response (200 OK):**
 
 ```json
 {
-  "path": "/app/DOKUMENTY/raport.pdf",
-  "strategy": "hi_res",
-  "parents_count": 12,
-  "children_count": 348,
-  "replaced_existing": true
+  "added": 3,
+  "updated": 1,
+  "skipped": 18,
+  "deleted": 0,
+  "errors": [],
+  "elapsed_seconds": 87.4,
+  "strategy": "hi_res"
 }
 ```
 
-- `replaced_existing` — `true` jeśli plik już był w bazie (stare dane skasowane przed reingest), `false` jeśli to pierwszy raz.
+| Pole | Znaczenie |
+|------|-----------|
+| `added` | Pliki nowe (nie były w metadata store) |
+| `updated` | Pliki które już były w bazie i zostały reprocessed |
+| `skipped` | Pliki niezmienione (tylko w trybie full sync — bez `paths`) |
+| `deleted` | Pliki usunięte z dysku (tylko w trybie full sync) |
+| `errors` | Lista `{"path": ..., "error": ...}` dla plików które padły. Operacja nie przerywa się przy błędzie pojedynczego pliku. |
+| `elapsed_seconds` | Czas wykonania całego syncu (do orientacji w wydajności) |
+| `strategy` | Strategia faktycznie użyta |
 
 **Kody błędów:**
 
-| Kod | Kiedy | Detail |
-|-----|-------|--------|
-| `400` | Ścieżka spoza `DOKUMENTY/` | `"Ścieżka musi być wewnątrz katalogu '...'"` |
-| `400` | Nieobsługiwane rozszerzenie | `"Nieobsługiwane rozszerzenie '.json'. Dozwolone: .pdf, .txt"` |
-| `404` | Plik nie istnieje | `"Plik nie istnieje lub nie jest plikiem: ..."` |
-| `503` | Brak GPU lub awaria Mongo | `"Ingest wymaga GPU (CUDA), ale jest niedostępne."` lub komunikat Mongo |
-| `500` | Niespodziewany błąd ingestu | Pełny traceback w `./logs/app.log` |
+| Kod | Kiedy |
+|-----|-------|
+| `400` | Ścieżka w `paths` spoza `DOKUMENTY/` |
+| `503` | Brak GPU (`Ingest wymaga GPU (CUDA)...`) lub awaria Mongo (metadata store) |
+| `500` | Niespodziewany błąd globalny (traceback w `./logs/app.log`) |
+
+Pojedyncze pliki które padły są w `errors`, **nie** powodują 5xx. Pomyłka per-plik to normalna sytuacja, nie awaria całego endpointa.
+
+**Przykłady curl:**
+
+```bash
+# Tryb 1: pełen incremental sync (jak ingest run)
+curl -X POST http://localhost:8000/ingest/sync/ \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Tryb 2: konkretne pliki, force reprocess (jak ingest file <path> w pętli)
+curl -X POST http://localhost:8000/ingest/sync/ \
+  -H "Content-Type: application/json" \
+  -d '{"paths": ["DOKUMENTY/raport_q1.pdf", "DOKUMENTY/raport_q2.pdf"]}'
+
+# Mix: konkretne pliki + override strategii
+curl -X POST http://localhost:8000/ingest/sync/ \
+  -H "Content-Type: application/json" \
+  -d '{"paths": ["DOKUMENTY/skan.pdf"], "strategy": "hi_res"}'
+```
+
+### `POST /ingest/rebuild/`
+
+Pełna przebudowa — kasuje **wszystko** (Qdrant collection, `rag.parents`, `rag.files_metadata`) i indeksuje od zera. Odpowiednik CLI `ingest rebuild --yes`.
+
+**Request:**
+
+```json
+{
+  "confirm": "DELETE_ALL",
+  "strategy": "fast"
+}
+```
+
+- `confirm` — **wymagane**, MUSI równać się literałowi `"DELETE_ALL"`. Inaczej `HTTP 400`. Defense-in-depth: zapobiega przypadkowym wywołaniom (np. typo w URL `/ingest/sync/` → `/ingest/rebuild/`).
+- `strategy` — opcjonalna, jak w `/ingest/sync/`.
+
+**Response:** identyczny schemat jak `/ingest/sync/` — zwraca `IngestSyncResponse` ze statystykami sync wykonanego po wyczyszczeniu baz. Po rebuildzie wszystkie pliki będą w `added` (nigdy `updated`/`skipped`/`deleted`, bo baza jest pusta przed reindeksacją).
+
+**Kody błędów:**
+
+| Kod | Kiedy |
+|-----|-------|
+| `400` | Brak / zły `confirm` (`Wymagane potwierdzenie: pole "confirm"...`) |
+| `503` | Brak GPU lub awaria Mongo |
+| `500` | Niespodziewany błąd |
 
 **Przykład curl:**
 
 ```bash
-# Reprocess z domyślną strategią (.env)
-curl -X POST http://localhost:8000/ingest/file/ \
+curl -X POST http://localhost:8000/ingest/rebuild/ \
   -H "Content-Type: application/json" \
-  -d '{"path": "DOKUMENTY/raport.pdf"}'
-
-# Override strategii — ten jeden plik przez hi_res
-curl -X POST http://localhost:8000/ingest/file/ \
-  -H "Content-Type: application/json" \
-  -d '{"path": "DOKUMENTY/skan.pdf", "strategy": "hi_res"}'
+  -d '{"confirm": "DELETE_ALL"}'
 ```
 
-**Uwaga o latencji:** ingest to operacja synchroniczna i może trwać **minuty** (zwłaszcza `hi_res` na dużych PDF-ach). Klient HTTP musi mieć odpowiedni timeout. Jeśli klient się rozłączy w trakcie — proces ingestu na serwerze nadal się dokończy, dane wylądują w bazie, a wynik znajdziesz w `./logs/app.log` (`FILE-DONE ...`).
+### Uwaga o latencji i bezpieczeństwie endpointów ingest
 
-**Bezpieczeństwo:** endpoint jest **otwarty** (jak `/query/`) — w wdrożeniu produkcyjnym wystaw go tylko za firewallem / VPN-em / proxy z auth. Może wywołać kosztowną operację (GPU, pisanie do bazy), więc nie powinien być publicznie dostępny.
+**Synchroniczność:** oba endpointy są **synchroniczne**. Mogą trwać minuty/godziny dla dużych korpusów lub `hi_res`. Klient HTTP musi mieć odpowiedni timeout. **Jeśli klient się rozłączy w trakcie — proces na serwerze nadal się dokończy**, dane wylądują w bazie, a wynik znajdziesz w `./logs/app.log` (szukaj `FILE-DONE`, `Synchronizacja zakończona`).
+
+**Bezpieczeństwo:** oba endpointy są **otwarte** (jak `/query/`) — w wdrożeniu produkcyjnym wystaw je tylko za firewallem / VPN-em / proxy z auth. Wywołują kosztowne operacje (GPU, pisanie i kasowanie z baz), więc nie powinny być publicznie dostępne.
 
 ### OpenAPI / Swagger
 

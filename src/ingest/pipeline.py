@@ -1,6 +1,7 @@
 import logging
+import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import typer
@@ -49,9 +50,34 @@ class SingleFileResult:
     replaced_existing: bool
 
 
-def _ensure_cuda() -> None:
+@dataclass
+class SyncFileError:
+    path: str
+    error: str
+
+
+@dataclass
+class SyncResult:
+    added: int = 0
+    updated: int = 0
+    skipped: int = 0
+    deleted: int = 0
+    errors: list[SyncFileError] = field(default_factory=list)
+    elapsed_seconds: float = 0.0
+
+
+def _check_cuda() -> None:
+    """Rzuca RuntimeError jeśli brak CUDA. Czysta wersja dla użycia z dowolnego kontekstu."""
     if INGEST_DEVICE is None:
-        typer.secho("BŁĄD: Brak GPU (CUDA). Przerwanie operacji.", fg=typer.colors.RED)
+        raise RuntimeError("Ingest wymaga GPU (CUDA), ale jest niedostępne.")
+
+
+def _ensure_cuda() -> None:
+    """Wersja z typer.Exit dla CLI — zachowana dla zgodności wywołań."""
+    try:
+        _check_cuda()
+    except RuntimeError as e:
+        typer.secho(f"BŁĄD: {e}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
 
@@ -145,21 +171,19 @@ def _ingest_one_file(
     return parent_ids, child_ids
 
 
-def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATEGY) -> None:
-    _ensure_cuda()
+def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATEGY) -> SyncResult:
+    _check_cuda()
+    started = time.monotonic()
+    result = SyncResult()
+
     typer.echo(format_effective_config())
     typer.echo(f"Synchronizacja | Urządzenie: {INGEST_DEVICE} | Strategia: {strategy}")
 
     physical = _list_source_files(source_dir)
     physical_strs = [str(p) for p in physical]
 
-    try:
-        evaluations = [evaluate_file_status(str(p)) for p in physical]
-        deletions = find_deleted_files(physical_strs)
-    except MetadataStoreError as e:
-        logger.error("Metadata-store nieosiągalny: %s", e, exc_info=True)
-        typer.secho(f"BŁĄD metadata-store: {e}", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
+    evaluations = [evaluate_file_status(str(p)) for p in physical]
+    deletions = find_deleted_files(physical_strs)
 
     logger.info(
         "Start synchronizacji: source=%s strategy=%s nowych=%d zmienionych=%d usuniętych=%d bez_zmian=%d",
@@ -174,6 +198,8 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
     to_update = [e for e in evaluations if e.action == FileAction.UPDATE]
     to_skip = [e for e in evaluations if e.action == FileAction.SKIP]
 
+    result.skipped = len(to_skip)
+
     typer.echo(
         f"Plan: {len(to_add)} nowych | {len(to_update)} zmienionych | "
         f"{len(deletions)} usuniętych | {len(to_skip)} bez zmian"
@@ -181,7 +207,8 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
 
     if not (to_add or to_update or deletions):
         typer.secho("Baza jest aktualna — nic do zrobienia.", fg=typer.colors.GREEN)
-        return
+        result.elapsed_seconds = round(time.monotonic() - started, 2)
+        return result
 
     setup_collection(recreate=False)
 
@@ -191,9 +218,11 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
             delete_file_metadata(ev.file_path)
             logger.info("DEL %s", ev.file_path)
             typer.echo(f"  [DEL] {ev.file_path}")
+            result.deleted += 1
         except Exception as e:
             logger.error("ERR-DEL %s: %s", ev.file_path, e, exc_info=True)
             typer.secho(f"  [ERR-DEL] {ev.file_path}: {e}", fg=typer.colors.RED)
+            result.errors.append(SyncFileError(path=ev.file_path, error=str(e)))
 
     for ev in to_update:
         try:
@@ -225,6 +254,10 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
                 typer.echo(
                     f"  [{label}] {ev.file_path} ({len(parent_ids)}p / {len(child_ids)}c)"
                 )
+                if ev.action == FileAction.ADD:
+                    result.added += 1
+                else:
+                    result.updated += 1
             except Exception as e:
                 try:
                     mark_file_error(ev.file_path, ev.content_hash)
@@ -232,15 +265,19 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
                     pass
                 logger.error("ERR-%s %s: %s", label, ev.file_path, e, exc_info=True)
                 typer.secho(f"  [ERR-{label}] {ev.file_path}: {e}", fg=typer.colors.RED)
+                result.errors.append(SyncFileError(path=ev.file_path, error=str(e)))
 
     logger.info("Synchronizacja zakończona.")
-
     typer.secho("Synchronizacja zakończona.", fg=typer.colors.GREEN)
 
+    result.elapsed_seconds = round(time.monotonic() - started, 2)
+    return result
 
-def run_rebuild(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATEGY) -> None:
-    _ensure_cuda()
+
+def run_rebuild(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATEGY) -> SyncResult:
+    _check_cuda()
     typer.echo("Czyszczenie baz...")
+    logger.warning("REBUILD: czyszczenie wszystkich baz przed pełną reindeksacją")
 
     setup_collection(recreate=True)
     get_parents_collection().delete_many({})
@@ -249,7 +286,46 @@ def run_rebuild(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STR
     typer.echo("  Qdrant: kolekcja utworzona na nowo")
     typer.echo(f"  MongoDB: wyczyszczono '{MONGODB_DB}.parents' i '{MONGODB_DB}.{MONGODB_FILES_METADATA_COLLECTION}'")
 
-    run_sync(source_dir=source_dir, strategy=strategy)
+    return run_sync(source_dir=source_dir, strategy=strategy)
+
+
+def run_sync_paths(
+    paths: list[str],
+    strategy: str = EXTRACTION_STRATEGY,
+) -> SyncResult:
+    """Wymusza reprocess listy ścieżek (każda przez run_single_file).
+
+    W przeciwieństwie do run_sync, nie ma SKIP/DELETE — jeśli ścieżka jest
+    podana, plik jest reprocessowany niezależnie od hash. Idealne dla
+    "odśwież mi te konkretne dokumenty".
+
+    Raises:
+        RuntimeError: brak GPU.
+    """
+    _check_cuda()
+    started = time.monotonic()
+    result = SyncResult()
+
+    deduped = list(dict.fromkeys(paths))  # preserve order, drop duplicates
+    logger.info("Sync paths: %d ścieżek (po dedupe: %d), strategy=%s",
+                len(paths), len(deduped), strategy)
+
+    for raw_path in deduped:
+        try:
+            single = run_single_file(raw_path, strategy=strategy)
+            if single.replaced_existing:
+                result.updated += 1
+            else:
+                result.added += 1
+        except (FileNotFoundError, ValueError, MetadataStoreError) as e:
+            logger.error("ERR sync_paths %s: %s", raw_path, e)
+            result.errors.append(SyncFileError(path=raw_path, error=str(e)))
+        except Exception as e:
+            logger.error("ERR sync_paths %s: %s", raw_path, e, exc_info=True)
+            result.errors.append(SyncFileError(path=raw_path, error=str(e)))
+
+    result.elapsed_seconds = round(time.monotonic() - started, 2)
+    return result
 
 
 def run_single_file(
@@ -267,8 +343,7 @@ def run_single_file(
         RuntimeError: brak GPU (CUDA niedostępne).
         MetadataStoreError: błąd komunikacji z Mongo.
     """
-    if INGEST_DEVICE is None:
-        raise RuntimeError("Ingest wymaga GPU (CUDA), ale jest niedostępne.")
+    _check_cuda()
 
     path = Path(file_path)
     if not path.exists() or not path.is_file():

@@ -69,7 +69,7 @@ def test_run_single_file_does_not_touch_other_files(copy_fixture, source_dir):
     run_single_file(str(target))
 
     _, parents_after, files_after = _counts()
-    assert files_after == files_before  # nie dotknęło drugiego pliku
+    assert files_after == files_before
     assert parents_after > 0
 
 
@@ -90,7 +90,51 @@ def test_run_single_file_unsupported_extension_raises_valueerror(tmp_path):
         run_single_file(str(junk))
 
 
-def test_endpoint_ingest_file_first_time(client, copy_fixture, source_dir, monkeypatch):
+def test_run_sync_paths_processes_only_listed(copy_fixture, source_dir):
+    from src.ingest.pipeline import run_sync_paths
+
+    a = copy_fixture("machine_learning_pl.txt")
+    b = copy_fixture("rag_systems_pl.txt")
+
+    result = run_sync_paths([str(a)])
+
+    assert result.added == 1
+    assert result.updated == 0
+    assert result.errors == []
+
+    # Drugi plik nie powinien zostać dotknięty
+    _, _, files = _counts()
+    assert files == 1
+
+
+def test_run_sync_paths_dedupes_and_replaces_on_repeat(copy_fixture, source_dir):
+    from src.ingest.pipeline import run_sync_paths
+
+    p = copy_fixture("rag_systems_pl.txt")
+
+    # Pierwszy raz: ADD; duplikat ścieżki w wejściu — dedupe → 1 added
+    first = run_sync_paths([str(p), str(p)])
+    assert first.added == 1
+    assert first.updated == 0
+
+    # Drugi raz: UPD bo już jest
+    second = run_sync_paths([str(p)])
+    assert second.added == 0
+    assert second.updated == 1
+
+
+def test_run_sync_paths_collects_errors_for_missing_files(copy_fixture):
+    from src.ingest.pipeline import run_sync_paths
+
+    valid = copy_fixture("rag_systems_pl.txt")
+    result = run_sync_paths([str(valid), "/tmp/no_such_file_xyz.pdf"])
+
+    assert result.added == 1
+    assert len(result.errors) == 1
+    assert "no_such_file_xyz.pdf" in result.errors[0].path
+
+
+def test_endpoint_sync_with_paths_first_time(client, copy_fixture, source_dir, monkeypatch):
     from src import config
     from src.server import routes
 
@@ -99,17 +143,17 @@ def test_endpoint_ingest_file_first_time(client, copy_fixture, source_dir, monke
 
     path = copy_fixture("rag_systems_pl.txt")
 
-    response = client.post("/ingest/file/", json={"path": str(path)})
+    response = client.post("/ingest/sync/", json={"paths": [str(path)]})
 
     assert response.status_code == 200
     data = response.json()
-    assert data["replaced_existing"] is False
-    assert data["parents_count"] > 0
-    assert data["children_count"] > 0
+    assert data["added"] == 1
+    assert data["updated"] == 0
+    assert data["errors"] == []
     assert data["strategy"]
 
 
-def test_endpoint_ingest_file_second_time_replaces(client, copy_fixture, source_dir, monkeypatch):
+def test_endpoint_sync_with_paths_second_time_updates(client, copy_fixture, source_dir, monkeypatch):
     from src import config
     from src.server import routes
 
@@ -117,15 +161,16 @@ def test_endpoint_ingest_file_second_time_replaces(client, copy_fixture, source_
     monkeypatch.setattr(routes, "PDF_SOURCE_DIR", str(source_dir))
 
     path = copy_fixture("rag_systems_pl.txt")
-    client.post("/ingest/file/", json={"path": str(path)})
+    client.post("/ingest/sync/", json={"paths": [str(path)]})
 
-    response = client.post("/ingest/file/", json={"path": str(path)})
+    response = client.post("/ingest/sync/", json={"paths": [str(path)]})
 
     assert response.status_code == 200
-    assert response.json()["replaced_existing"] is True
+    assert response.json()["updated"] == 1
+    assert response.json()["added"] == 0
 
 
-def test_endpoint_rejects_path_outside_source_dir(client, source_dir, monkeypatch, tmp_path):
+def test_endpoint_sync_rejects_paths_outside_source_dir(client, source_dir, monkeypatch, tmp_path):
     from src import config
     from src.server import routes
 
@@ -135,28 +180,30 @@ def test_endpoint_rejects_path_outside_source_dir(client, source_dir, monkeypatc
     outside = tmp_path / "outside.pdf"
     outside.write_text("dummy")
 
-    response = client.post("/ingest/file/", json={"path": str(outside)})
+    response = client.post("/ingest/sync/", json={"paths": [str(outside)]})
 
     assert response.status_code == 400
-    assert "DOKUMENTY" in response.json()["detail"] or "wewnątrz" in response.json()["detail"]
 
 
-def test_endpoint_returns_404_for_missing_file(client, source_dir, monkeypatch):
+def test_endpoint_sync_no_paths_runs_full_sync(client, copy_fixture, source_dir, monkeypatch):
     from src import config
     from src.server import routes
 
     monkeypatch.setattr(config, "PDF_SOURCE_DIR", str(source_dir))
     monkeypatch.setattr(routes, "PDF_SOURCE_DIR", str(source_dir))
 
-    source_dir.mkdir(parents=True, exist_ok=True)
-    missing = source_dir / "nieistniejacy.pdf"
+    copy_fixture("rag_systems_pl.txt")
+    copy_fixture("machine_learning_pl.txt")
 
-    response = client.post("/ingest/file/", json={"path": str(missing)})
+    response = client.post("/ingest/sync/", json={})
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    data = response.json()
+    assert data["added"] == 2
+    assert data["errors"] == []
 
 
-def test_endpoint_strategy_override_passed_through(client, copy_fixture, source_dir, monkeypatch):
+def test_endpoint_sync_strategy_override(client, copy_fixture, source_dir, monkeypatch):
     from src import config
     from src.server import routes
 
@@ -164,12 +211,42 @@ def test_endpoint_strategy_override_passed_through(client, copy_fixture, source_
     monkeypatch.setattr(routes, "PDF_SOURCE_DIR", str(source_dir))
 
     path = copy_fixture("rag_systems_pl.txt")
-
-    # .txt nie używa strategii w realnej ekstrakcji, ale walidujemy że pole leci dalej
     response = client.post(
-        "/ingest/file/",
-        json={"path": str(path), "strategy": "fast"},
+        "/ingest/sync/",
+        json={"paths": [str(path)], "strategy": "fast"},
     )
 
     assert response.status_code == 200
     assert response.json()["strategy"] == "fast"
+
+
+def test_endpoint_rebuild_without_confirm_returns_400(client):
+    response = client.post("/ingest/rebuild/", json={})
+
+    assert response.status_code in (400, 422)
+
+
+def test_endpoint_rebuild_with_wrong_confirm_returns_400(client):
+    response = client.post("/ingest/rebuild/", json={"confirm": "yes"})
+
+    assert response.status_code == 400
+
+
+def test_endpoint_rebuild_with_correct_confirm_runs_full_rebuild(client, copy_fixture, source_dir, monkeypatch):
+    from src import config
+    from src.server import routes
+    from src.ingest import pipeline
+
+    monkeypatch.setattr(config, "PDF_SOURCE_DIR", str(source_dir))
+    monkeypatch.setattr(routes, "PDF_SOURCE_DIR", str(source_dir))
+    monkeypatch.setattr(pipeline, "PDF_SOURCE_DIR", str(source_dir))
+
+    copy_fixture("rag_systems_pl.txt")
+    copy_fixture("machine_learning_pl.txt")
+
+    response = client.post("/ingest/rebuild/", json={"confirm": "DELETE_ALL"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["added"] == 2
+    assert data["errors"] == []

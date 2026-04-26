@@ -7,16 +7,23 @@ from src.config import API_DEVICE, EXTRACTION_STRATEGY, PDF_SOURCE_DIR, RETRIEVA
 from src.db.metadata_store import MetadataStoreError
 from src.db.mongo import get_parents_collection
 from src.ingest.embeddings import E5HuggingFaceEmbeddings
-from src.ingest.pipeline import run_single_file
+from src.ingest.pipeline import (
+    SyncResult,
+    run_rebuild,
+    run_sync,
+    run_sync_paths,
+)
 from src.ingest.sparse_embeddings import BM25SparseEmbeddings
 from src.retrieval.filters import InvalidFilterError, build_qdrant_filter
 from src.retrieval.hybrid import retrieve_children
 from src.server.schemas import (
     DocumentFragment,
-    IngestFileRequest,
-    IngestFileResponse,
+    IngestRebuildRequest,
+    IngestSyncRequest,
+    IngestSyncResponse,
     QueryRequest,
     QueryResponse,
+    SyncErrorItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,46 +101,97 @@ def query(request: QueryRequest):
     return QueryResponse(results=fragments)
 
 
-@router.post("/ingest/file/", response_model=IngestFileResponse)
-def ingest_file(request: IngestFileRequest):
-    """Wymusza reprocess jednego pliku — kasuje stare dane i indeksuje od nowa.
+def _validate_paths_under_source(paths: list[str]) -> list[str]:
+    """Defense-in-depth: każda ścieżka musi być wewnątrz PDF_SOURCE_DIR.
+    Zwraca znormalizowane ścieżki (resolved). Rzuca HTTPException(400) na pierwszą złą.
+    """
+    source_root = Path(PDF_SOURCE_DIR).resolve()
+    resolved = []
+    for raw in paths:
+        try:
+            r = Path(raw).resolve()
+            r.relative_to(source_root)
+            resolved.append(str(r))
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ścieżka '{raw}' musi być wewnątrz katalogu '{PDF_SOURCE_DIR}'",
+            )
+    return resolved
 
-    Ścieżka MUSI być wewnątrz katalogu PDF_SOURCE_DIR (DOKUMENTY/) — defense-in-depth
-    żeby klient nie mógł czytać dowolnych plików z systemu.
+
+def _sync_result_to_response(result: SyncResult, strategy: str) -> IngestSyncResponse:
+    return IngestSyncResponse(
+        added=result.added,
+        updated=result.updated,
+        skipped=result.skipped,
+        deleted=result.deleted,
+        errors=[SyncErrorItem(path=e.path, error=e.error) for e in result.errors],
+        elapsed_seconds=result.elapsed_seconds,
+        strategy=strategy,
+    )
+
+
+@router.post("/ingest/sync/", response_model=IngestSyncResponse)
+def ingest_sync(request: IngestSyncRequest):
+    """Synchronizacja korpusu.
+
+    - Brak `paths` (lub pusta lista) → pełen incremental sync całego DOKUMENTY/
+      (akcje ADD/UPDATE/SKIP/DELETE jak w `python manage.py ingest run`).
+    - Z `paths` → reprocess **tylko podanych plików**, każdy wymuszony niezależnie
+      od hash (jak `python manage.py ingest file <path>`). Bez SKIP/DELETE.
+
+    UWAGA: synchroniczny. Może trwać minuty/godziny dla dużych korpusów lub `hi_res`.
     """
     strategy = request.strategy or EXTRACTION_STRATEGY
-    logger.info("Ingest request: path=%s strategy=%s", request.path, strategy)
-
-    source_root = Path(PDF_SOURCE_DIR).resolve()
-    try:
-        requested = Path(request.path).resolve()
-        requested.relative_to(source_root)
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Ścieżka musi być wewnątrz katalogu '{PDF_SOURCE_DIR}'",
-        )
+    logger.info("Sync request: paths=%s strategy=%s", request.paths, strategy)
 
     try:
-        result = run_single_file(str(requested), strategy=strategy)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if request.paths:
+            validated = _validate_paths_under_source(request.paths)
+            result = run_sync_paths(validated, strategy=strategy)
+        else:
+            result = run_sync(source_dir=PDF_SOURCE_DIR, strategy=strategy)
     except RuntimeError as e:
         # Brak GPU
         raise HTTPException(status_code=503, detail=str(e))
     except MetadataStoreError as e:
         logger.error("Metadata store error: %s", e, exc_info=True)
         raise HTTPException(status_code=503, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Ingest failed: %s", e, exc_info=True)
+        logger.error("Sync failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-    return IngestFileResponse(
-        path=str(requested),
-        strategy=strategy,
-        parents_count=len(result.parent_ids),
-        children_count=len(result.child_ids),
-        replaced_existing=result.replaced_existing,
-    )
+    return _sync_result_to_response(result, strategy)
+
+
+@router.post("/ingest/rebuild/", response_model=IngestSyncResponse)
+def ingest_rebuild(request: IngestRebuildRequest):
+    """Pełna przebudowa — kasuje wszystko z Qdrant + Mongo, potem reindex od zera.
+
+    Wymaga `confirm: "DELETE_ALL"` w body — defense-in-depth, żeby przypadkowy POST
+    nie wyczyścił produkcji.
+    """
+    if request.confirm != "DELETE_ALL":
+        raise HTTPException(
+            status_code=400,
+            detail='Wymagane potwierdzenie: pole "confirm" musi mieć wartość "DELETE_ALL"',
+        )
+
+    strategy = request.strategy or EXTRACTION_STRATEGY
+    logger.warning("Rebuild request potwierdzony, strategy=%s", strategy)
+
+    try:
+        result = run_rebuild(source_dir=PDF_SOURCE_DIR, strategy=strategy)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except MetadataStoreError as e:
+        logger.error("Metadata store error: %s", e, exc_info=True)
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error("Rebuild failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return _sync_result_to_response(result, strategy)
