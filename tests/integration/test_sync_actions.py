@@ -117,3 +117,32 @@ def test_delete_action_removes_file_from_all_stores(copy_fixture, source_dir):
     assert files_after == 1
     assert parents_after < parents_before
     assert _metadata_record(str(path)) is None
+
+
+def test_delete_action_removes_child_vectors_from_qdrant(copy_fixture, source_dir):
+    from src.ingest.pipeline import run_sync
+
+    path = copy_fixture("machine_learning_pl.txt")
+    copy_fixture("rag_systems_pl.txt")
+
+    run_sync(source_dir=str(source_dir))
+
+    deleted_record = _metadata_record(str(path))
+    deleted_vector_ids = deleted_record["child_vector_ids"]
+    assert len(deleted_vector_ids) > 0
+
+    vectors_before, _, _ = _counts()
+
+    path.unlink()
+    run_sync(source_dir=str(source_dir))
+
+    vectors_after, _, _ = _counts()
+    assert vectors_after == vectors_before - len(deleted_vector_ids)
+
+    from src.db.client import get_client
+    qdrant = get_client()
+    found = qdrant.retrieve(
+        collection_name=_get_collection_name(),
+        ids=deleted_vector_ids,
+    )
+    assert found == []

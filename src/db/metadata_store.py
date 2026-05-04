@@ -101,20 +101,24 @@ def evaluate_file_status(file_path: str) -> FileEvaluation:
 
 
 def find_deleted_files(current_physical_files_list: Iterable[str]) -> list[FileEvaluation]:
-    current = list(current_physical_files_list)
+    current_set = set(current_physical_files_list)
     col = _get_collection()
-
+    deleted_evaluations = []
     try:
-        cursor = col.find({"file_path": {"$nin": current}})
-        return [
-            FileEvaluation(
-                action=FileAction.DELETE,
-                file_path=record["file_path"],
-                old_parent_doc_ids=record.get("parent_doc_ids", []),
-                old_child_vector_ids=record.get("child_vector_ids", []),
-            )
-            for record in cursor
-        ]
+        cursor = col.find({}, {"file_path": 1, "parent_doc_ids": 1, "child_vector_ids": 1})
+        for record in cursor:
+            db_file_path = record.get("file_path")
+            if db_file_path not in current_set:
+                deleted_evaluations.append(
+                    FileEvaluation(
+                        action=FileAction.DELETE,
+                        file_path=db_file_path,
+                        content_hash="",
+                        old_parent_doc_ids=record.get("parent_doc_ids", []),
+                        old_child_vector_ids=record.get("child_vector_ids", []),
+                    )
+                )
+        return deleted_evaluations
     except PyMongoError as e:
         raise MetadataStoreError(
             f"Nie udało się pobrać listy usuniętych plików: {e}"

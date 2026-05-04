@@ -233,12 +233,14 @@ def run_sync(source_dir: str = PDF_SOURCE_DIR, strategy: str = EXTRACTION_STRATE
 
     to_process = to_add + to_update
     if to_process:
+        total_files = len(to_process)
         dense_embedder = E5HuggingFaceEmbeddings(device=INGEST_DEVICE)
         sparse_embedder = BM25SparseEmbeddings()
 
-        for ev in to_process:
+        for i, ev in enumerate(to_process, 1):
             path = Path(ev.file_path)
             label = "ADD" if ev.action == FileAction.ADD else "UPD"
+            typer.echo(f"[{i}/{total_files}] [{label}] {ev.file_path}")
             try:
                 parent_ids, child_ids = _ingest_one_file(
                     path, strategy, ev.content_hash, dense_embedder, sparse_embedder
