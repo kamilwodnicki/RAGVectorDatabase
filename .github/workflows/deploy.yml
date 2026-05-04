@@ -1,0 +1,77 @@
+name: Manual Remote Deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout stable
+        uses: actions/checkout@v4
+        with:
+          ref: stable
+
+      - name: Require unit-tests CI to have passed on this commit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            });
+            const check = data.check_runs.find(c => c.name === 'unit-tests');
+            if (!check) {
+              core.setFailed(
+                `No 'unit-tests' check found on ${context.sha}. ` +
+                `Push the commit to a CI-tracked branch first and wait for tests to run.`
+              );
+              return;
+            }
+            if (check.conclusion !== 'success') {
+              core.setFailed(
+                `unit-tests check on ${context.sha} is '${check.conclusion}', not 'success'. ` +
+                `Fix CI before deploying.`
+              );
+              return;
+            }
+            core.info(`unit-tests succeeded on ${context.sha} — proceeding with deploy.`);
+
+      - name: Rsync to server
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: >-
+            -avzr --delete
+            --exclude='.git'
+            --exclude='.github'
+            --exclude='tests'
+            --exclude='logs/*'
+            --exclude='DOKUMENTY'
+            --exclude='METADATA'
+            --exclude='__pycache__'
+            --exclude='*.pyc'
+            --exclude='.env'
+          path: ./
+          remote_path: ${{ secrets.DEPLOY_PATH }}
+          remote_host: ${{ secrets.DEPLOY_HOST }}
+          remote_user: ${{ secrets.DEPLOY_USER }}
+          remote_key: ${{ secrets.DEPLOY_SSH_KEY }}
+          remote_port: ${{ secrets.DEPLOY_PORT }}
+
+      - name: Restart stack on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            docker compose up -d --build
+            docker compose ps
