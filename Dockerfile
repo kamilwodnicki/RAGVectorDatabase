@@ -19,6 +19,4 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . .
 
-RUN mkdir -p DOKUMENTY
-
 CMD ["python", "manage.py", "serve"]

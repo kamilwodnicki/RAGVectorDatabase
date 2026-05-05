@@ -1,0 +1,9 @@
+.git
+.github
+tests
+logs
+__pycache__
+*.pyc
+.env
+DOKUMENTY
+METADATA
