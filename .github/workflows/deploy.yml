@@ -7,10 +7,13 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+env:
+  KEEP_RELEASES: 5
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout stable
         uses: actions/checkout@v4
@@ -36,35 +39,18 @@ jobs:
             }
             if (check.conclusion !== 'success') {
               core.setFailed(
-                `unit-tests check on ${context.sha} is '${check.conclusion}', not 'success'. ` +
+                `unit-tests on ${context.sha} is '${check.conclusion}', not 'success'. ` +
                 `Fix CI before deploying.`
               );
               return;
             }
             core.info(`unit-tests succeeded on ${context.sha} — proceeding with deploy.`);
 
-      - name: Rsync to server
-        uses: burnett01/rsync-deployments@7.0.1
-        with:
-          switches: >-
-            -avzr --delete
-            --exclude='.git'
-            --exclude='.github'
-            --exclude='tests'
-            --exclude='logs/*'
-            --exclude='DOKUMENTY'
-            --exclude='METADATA'
-            --exclude='__pycache__'
-            --exclude='*.pyc'
-            --exclude='.env'
-          path: ./
-          remote_path: ${{ secrets.DEPLOY_PATH }}
-          remote_host: ${{ secrets.DEPLOY_HOST }}
-          remote_user: ${{ secrets.DEPLOY_USER }}
-          remote_key: ${{ secrets.DEPLOY_SSH_KEY }}
-          remote_port: ${{ secrets.DEPLOY_PORT }}
+      - name: Compute release id
+        id: rel
+        run: echo "id=$(date +%Y%m%d_%H%M%S)_${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Restart stack on server
+      - name: Prepare release directory on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -72,6 +58,63 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
           script: |
-            cd ${{ secrets.DEPLOY_PATH }}
+            set -euo pipefail
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            RELEASE_ID="${{ steps.rel.outputs.id }}"
+            mkdir -p "$DEPLOY_PATH/releases/$RELEASE_ID"
+            mkdir -p "$DEPLOY_PATH/shared/DOKUMENTY" "$DEPLOY_PATH/shared/METADATA"
+            if [ ! -f "$DEPLOY_PATH/shared/.env" ]; then
+              echo "FATAL: $DEPLOY_PATH/shared/.env is missing. Create it before deploying."
+              exit 1
+            fi
+
+      - name: Rsync release files
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: >-
+            -avzr --delete
+            --exclude=/.git
+            --exclude=/.github
+            --exclude=/tests
+            --exclude=/logs
+            --exclude=/DOKUMENTY
+            --exclude=/METADATA
+            --exclude=/.env
+            --exclude=__pycache__
+            --exclude=*.pyc
+          path: ./
+          remote_path: ${{ secrets.DEPLOY_PATH }}/releases/${{ steps.rel.outputs.id }}/
+          remote_host: ${{ secrets.DEPLOY_HOST }}
+          remote_user: ${{ secrets.DEPLOY_USER }}
+          remote_key: ${{ secrets.DEPLOY_SSH_KEY }}
+          remote_port: ${{ secrets.DEPLOY_PORT }}
+
+      - name: Link shared, swap current, restart, cleanup
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          envs: KEEP_RELEASES
+          script: |
+            set -euo pipefail
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            RELEASE_ID="${{ steps.rel.outputs.id }}"
+            REL="$DEPLOY_PATH/releases/$RELEASE_ID"
+
+            mkdir -p "$REL/logs"
+            ln -sfn "$DEPLOY_PATH/shared/DOKUMENTY" "$REL/DOKUMENTY"
+            ln -sfn "$DEPLOY_PATH/shared/METADATA" "$REL/METADATA"
+            ln -sfn "$DEPLOY_PATH/shared/.env" "$REL/.env"
+
+            ln -sfn "$REL" "$DEPLOY_PATH/current"
+
+            cd "$DEPLOY_PATH/current"
             docker compose up -d --build
             docker compose ps
+
+            cd "$DEPLOY_PATH/releases"
+            ls -1t | tail -n +$((KEEP_RELEASES + 1)) | xargs -r rm -rf
+            echo "Active releases:"
+            ls -1t

@@ -1,3 +1,5 @@
+name: rag
+
 services:
   qdrant:
     image: qdrant/qdrant:latest
