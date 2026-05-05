@@ -19,6 +19,7 @@ System RAG (Retrieval-Augmented Generation) dla dokumentów wielojęzycznych —
 - [Tuning — co zmienić kiedy](#tuning--co-zmienić-kiedy)
 - [Logi](#logi)
 - [Testy](#testy)
+- [Deploy na produkcję](#deploy-na-produkcję)
 - [Struktura projektu](#struktura-projektu)
 - [Troubleshooting](#troubleshooting)
 
@@ -899,6 +900,133 @@ make prepare_pr          # wszystko po kolei, fail-fast
 **Eval — golden set:** `tests/eval/fixtures/golden_set.json` zawiera ~20 pytań z oczekiwanym źródłem. Test drukuje rank każdego pytania i zbiorcze Hit@1, Hit@3, Hit@5, MRR@10. Używaj jako feedback loop przy tuningu.
 
 Testy integracyjne i eval używają **osobnych kolekcji** (`documents_test`, `documents_eval`) i baz (`rag_test`, `rag_eval`) — nie konfliktują z produkcyjną bazą.
+
+---
+
+## Deploy na produkcję
+
+Wdrożenia są **ręczne, wersjonowane przez tagi git, oparte o release directories** z atomowym przepięciem symlinka. Każdy deploy to konkretny tag (np. `v0.1.0`) — niezmienialna referencja do commita, który poszedł na produkcję.
+
+### Architektura deploymentu na serwerze
+
+```
+$DEPLOY_PATH/
+├── current → releases/v0.1.0_20260505_180000      # symlink do aktywnej wersji
+├── releases/
+│   ├── v0.0.5_20260501_120000/                    # poprzednie wersje (do rollbacku)
+│   ├── v0.1.0_20260505_180000/                    # bieżąca wersja
+│   │   ├── src/, docker-compose.yml, Dockerfile, ...
+│   │   ├── logs/                                  # logi tego release (lokalne)
+│   │   ├── DOKUMENTY → ../../shared/DOKUMENTY     # symlink do trwałych danych
+│   │   ├── METADATA  → ../../shared/METADATA
+│   │   └── .env      → ../../shared/.env
+│   └── ...
+└── shared/
+    ├── DOKUMENTY/        # korpus dokumentów (trwałe)
+    ├── METADATA/         # metadata artykułów (trwałe)
+    └── .env              # sekrety i konfiguracja (trwałe)
+```
+
+`releases/` trzyma 5 ostatnich wersji (`KEEP_RELEASES` w `deploy.yml`). Starsze są usuwane razem z ich logami. Named volumes Dockera (`rag_qdrant_data`, `rag_mongodb_data`) są niezależne od tej struktury — przeżywają wszystkie deploye.
+
+### Wymagania jednorazowe
+
+#### Po stronie serwera
+
+1. **Użytkownik deploy** (np. `gh-deployer`) musi:
+   - mieć skonfigurowane `~/.ssh/authorized_keys` z publicznym kluczem deploya
+   - być w grupie `docker`: `sudo usermod -aG docker gh-deployer && sudo pkill -KILL -u gh-deployer`
+   - mieć prawa zapisu do `$DEPLOY_PATH`
+2. **Struktura katalogów**:
+   ```bash
+   sudo mkdir -p $DEPLOY_PATH/{releases,shared/DOKUMENTY,shared/METADATA}
+   sudo touch $DEPLOY_PATH/shared/.env  # uzupełnij realną konfiguracją
+   sudo chown -R gh-deployer:gh-deployer $DEPLOY_PATH
+   ```
+
+#### Po stronie GitHuba — sekrety repozytorium
+
+| Sekret | Wartość |
+|--------|---------|
+| `DEPLOY_HOST` | adres serwera (np. `rag-serwer.instytut`) |
+| `DEPLOY_USER` | użytkownik SSH (`gh-deployer`) |
+| `DEPLOY_PORT` | port SSH (zazwyczaj `22`) |
+| `DEPLOY_SSH_KEY` | **prywatny** klucz SSH (cała zawartość, łącznie z `-----BEGIN/END-----`) |
+| `DEPLOY_PATH` | absolutna ścieżka root deploymentu na serwerze (bez końcowego `/`) |
+
+#### Po stronie GitHuba — branch protection na `main`
+
+Settings → Branches → Add rule dla `main`:
+- ✅ Require a pull request before merging
+- ✅ Require status checks to pass — wybierz `unit-tests`
+- ✅ Restrict who can push to matching branches
+
+### Cykl wydania — krok po kroku
+
+1. **Praca rozwojowa**: branch z fixem/feature → PR do `main` → CI musi przejść zielono → merge przez squash.
+2. **Decyzja o wydaniu**: lokalnie utwórz tag wskazujący na konkretny commit `main` i wypchnij:
+
+   ```bash
+   git checkout main
+   git pull origin main
+   git tag -a v0.1.0 -m "Krótki opis tej wersji"
+   git push origin v0.1.0
+   ```
+
+   Konwencja: [SemVer](https://semver.org) — `MAJOR.MINOR.PATCH`. Patche (`v0.1.0` → `v0.1.1`) dla fixów, minor (`v0.1.0` → `v0.2.0`) dla nowych ficzerów, major (`v0.1.0` → `v1.0.0`) dla zmian łamiących kompatybilność API.
+
+3. **Sprawdź na GitHubie, że CI dla tego commita zakończyło się sukcesem** (Actions → ostatni run na `main` przy commicie, na który wskazuje tag).
+
+4. **Odpal deploy**: Actions → **Manual Remote Deploy** → **Run workflow**:
+   - Branch: `main` (nie ma znaczenia, decyduje `tag`)
+   - **Tag**: `v0.1.0`
+   - Run workflow
+
+   Workflow:
+   1. Pobiera kod z taga.
+   2. Weryfikuje, że `unit-tests` przeszły zielono dla commita pod tagiem (fail-fast jeśli nie).
+   3. Tworzy `releases/v0.1.0_<timestamp>/` na serwerze.
+   4. rsynchronizuje kod (z exclude'ami: `.git`, `tests`, `DOKUMENTY`, `METADATA`, `.env` itd.).
+   5. Linkuje `shared/*` do release.
+   6. Atomowo przepina symlink `current`.
+   7. `docker compose up -d --build`.
+   8. Czyści releases starsze niż 5 ostatnich.
+
+5. **Sanity check po deployu**:
+
+   ```bash
+   ssh gh-deployer@rag-serwer
+   cd $DEPLOY_PATH/current
+   docker compose ps                                       # 3 kontenery Up
+   docker exec rag-server python manage.py db status       # Qdrant odpowiada
+   docker exec rag-server python manage.py db mongo-status # Mongo OK
+   ```
+
+### Rollback
+
+Wszystkie poprzednie wersje siedzą w `releases/`. Cofnięcie to **podmiana symlinka** + restart:
+
+```bash
+ssh gh-deployer@rag-serwer
+cd $DEPLOY_PATH
+
+# Sprawdź co masz dostępne:
+ls -1t releases/
+
+# Przepnij na konkretną starą wersję (przykład):
+ln -sfn releases/v0.0.5_20260501_120000 current
+
+# Wstaw stack na starym kodzie:
+cd current && docker compose up -d
+```
+
+Bez rebuildu, w sekundy. **Dane (DOKUMENTY, MongoDB, Qdrant) pozostają nietknięte** — rollback dotyczy wyłącznie kodu.
+
+### Ograniczenia bieżącej implementacji
+
+- **Brak automatycznego health-checka** po `docker compose up`. Jeśli kontener wstanie, ale aplikacja w środku zaraz padnie, workflow zaraportuje sukces. Sanity check (`docker compose ps` + curl) trzeba zrobić ręcznie po deployu.
+- **Migracje danych** (zmiany schematu MongoDB / Qdrant) nie są częścią workflow — jeśli przyszły release tego wymaga, trzeba to obsłużyć osobno przed lub po deployu.
+- **Sekrety w `.env`** są wspólne dla wszystkich releases — zmiana wymaga ręcznego edytu `$DEPLOY_PATH/shared/.env` na serwerze, niezależnie od kodu.
 
 ---
 
