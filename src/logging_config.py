@@ -6,7 +6,6 @@ from pathlib import Path
 
 LOG_DIR = Path(os.getenv("LOG_DIR", "/app/logs"))
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-LOG_BACKUP_DAYS = int(os.getenv("LOG_BACKUP_DAYS", "14"))
 LOG_FILENAME = "app.log"
 
 _FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -27,7 +26,7 @@ def setup_logging() -> None:
     file_handler = TimedRotatingFileHandler(
         LOG_DIR / LOG_FILENAME,
         when="midnight",
-        backupCount=LOG_BACKUP_DAYS,
+        backupCount=0,
         encoding="utf-8",
         utc=False,
     )
@@ -46,8 +45,8 @@ def setup_logging() -> None:
     _configured = True
 
     logging.getLogger(__name__).info(
-        "Logowanie skonfigurowane: dir=%s level=%s rotation=daily backup_days=%d",
-        LOG_DIR, LOG_LEVEL, LOG_BACKUP_DAYS,
+        "Logowanie skonfigurowane: dir=%s level=%s rotation=daily backup=keep_forever",
+        LOG_DIR, LOG_LEVEL,
     )
 
 

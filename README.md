@@ -835,7 +835,8 @@ Traceback (most recent call last):
 |---------|---------|------|
 | `LOG_LEVEL` | `INFO` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` \| `CRITICAL` |
 | `LOG_DIR` | `/app/logs` | Katalog wewnątrz kontenera (zmapowany na `./logs` na hoście) |
-| `LOG_BACKUP_DAYS` | `14` | Ile dni archiwów trzymać. Po tym czasie najstarszy `app.log.YYYY-MM-DD` jest kasowany przy najbliższej rotacji. |
+
+Logi nie są automatycznie kasowane przez aplikację. Bieżący plik to `app.log`, archiwa dzienne: `app.log.YYYY-MM-DD`. Cykl życia logów = cykl życia release katalogu (workflow `deploy.yml` usuwa releases starsze niż `KEEP_RELEASES`, razem z ich logami).
 
 Zmiana `LOG_LEVEL=DEBUG` da wglądnie w bardzo szczegółowe logi (przydatne przy debug, ale plik puchnie szybciej). Po edycji `.env` → `make down && make up`.
 
