@@ -131,12 +131,13 @@ jobs:
             ln -sfn "$DEPLOY_PATH/shared/.env" "$REL/.env"
 
             ln -sfn "$REL" "$DEPLOY_PATH/current"
+            ln -sfn "$RELEASE_ID" "$DEPLOY_PATH/releases/current"
 
             cd "$DEPLOY_PATH/current"
             docker compose up -d --build
             docker compose ps
 
             cd "$DEPLOY_PATH/releases"
-            ls -1t | tail -n +$((KEEP_RELEASES + 1)) | xargs -r rm -rf
+            ls -1t | grep -v '^current$' | tail -n +$((KEEP_RELEASES + 1)) | xargs -r rm -rf
             echo "Active releases:"
-            ls -1t
+            ls -1t | grep -v '^current$'
