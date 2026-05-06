@@ -205,6 +205,106 @@
         }
       ],
       "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Children returned per query (rate)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, mode) (rate(qdrant_children_per_query_bucket[5m])))",
+          "legendFormat": "p50 {{mode}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, mode) (rate(qdrant_children_per_query_bucket[5m])))",
+          "legendFormat": "p95 {{mode}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0}}
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Top score (p50 / p95) per mode",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, mode) (rate(qdrant_top_score_bucket[5m])))",
+          "legendFormat": "p50 {{mode}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, mode) (rate(qdrant_top_score_bucket[5m])))",
+          "legendFormat": "p95 {{mode}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0, "max": 1}}
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Empty result rate (last 5m)",
+      "gridPos": {"h": 4, "w": 12, "x": 0, "y": 36},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "100 * sum(rate(query_parents_returned_bucket{le=\"0.0\"}[5m])) / sum(rate(query_parents_returned_count[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 5},
+              {"color": "red", "value": 20}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Total queries (cumulative)",
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 36},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(qdrant_children_per_query_count)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    },
+    {
+      "id": 15,
+      "type": "logs",
+      "title": "Query log — kompaktowy stream (klik = pełen JSON)",
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 40},
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [
+        {
+          "expr": "{container=\"rag-server\", event=\"query\"} | json | json children=\"children\", parents=\"returned_parent_ids\" | line_format \"QUERY: {{.query}} | mode={{.mode}} | top={{.top_score}} | n_parents={{.n_parents}} | exp={{.experiment_id}} | {{.duration_ms}}ms\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none"
+      }
     }
   ]
 }

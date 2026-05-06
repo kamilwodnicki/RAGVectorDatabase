@@ -28,6 +28,27 @@ mongo_query_duration_seconds = Histogram(
     buckets=LATENCY_BUCKETS,
 )
 
+qdrant_children_per_query = Histogram(
+    "qdrant_children_per_query",
+    "Liczba child chunków zwróconych przez Qdrant per /query/.",
+    labelnames=("mode",),
+    buckets=(0, 1, 2, 3, 5, 10, 20, 50, 100),
+)
+
+query_parents_returned = Histogram(
+    "query_parents_returned",
+    "Liczba unikalnych parentów zwróconych użytkownikowi per /query/.",
+    labelnames=("mode",),
+    buckets=(0, 1, 2, 3, 5, 10, 20),
+)
+
+qdrant_top_score = Histogram(
+    "qdrant_top_score",
+    "Score najlepszego matchu z Qdranta per /query/.",
+    labelnames=("mode",),
+    buckets=(0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 0.99, 1.0),
+)
+
 
 @contextmanager
 def observe(histogram: Histogram, **labels):

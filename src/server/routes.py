@@ -1,9 +1,25 @@
+import json
 import logging
+import os
 from pathlib import Path
+from time import perf_counter
 
 from fastapi import APIRouter, HTTPException
 
-from src.config import API_DEVICE, EXTRACTION_STRATEGY, PDF_SOURCE_DIR, RETRIEVAL_MODE
+from src.config import (
+    API_DEVICE,
+    CHILD_CHUNK_OVERLAP,
+    CHILD_CHUNK_SIZE,
+    EXTRACTION_STRATEGY,
+    HYBRID_DENSE_WEIGHT,
+    HYBRID_RRF_K,
+    HYBRID_SPARSE_WEIGHT,
+    MODEL_NAME,
+    PARENT_MAX_SIZE,
+    PDF_SOURCE_DIR,
+    RETRIEVAL_MODE,
+    SPARSE_MODEL_NAME,
+)
 from src.db.metadata_store import MetadataStoreError
 from src.db.mongo import get_parents_collection
 from src.ingest.embeddings import E5HuggingFaceEmbeddings
@@ -19,8 +35,14 @@ from src.retrieval.hybrid import retrieve_children
 from src.server.metrics import (
     mongo_query_duration_seconds,
     observe,
+    qdrant_children_per_query,
     qdrant_query_duration_seconds,
+    qdrant_top_score,
+    query_parents_returned,
 )
+
+QUERY_LOG = logging.getLogger("rag.query")
+EXPERIMENT_ID = os.getenv("EXPERIMENT_ID", "")
 from src.server.schemas import (
     DocumentFragment,
     IngestRebuildRequest,
@@ -47,6 +69,7 @@ def _get_sparse_embedder() -> BM25SparseEmbeddings | None:
 
 @router.post("/query/", response_model=QueryResponse)
 def query(request: QueryRequest):
+    started = perf_counter()
     logger.info(
         "Query: k=%d mode=%s filters=%s query=%r",
         request.k, RETRIEVAL_MODE, request.filters, request.query[:200],
@@ -71,6 +94,10 @@ def query(request: QueryRequest):
         logger.error("Retrieval failed: %s", e, exc_info=True)
         raise HTTPException(status_code=503, detail=str(e))
 
+    qdrant_children_per_query.labels(mode=RETRIEVAL_MODE).observe(len(children))
+    if children:
+        qdrant_top_score.labels(mode=RETRIEVAL_MODE).observe(children[0].score)
+
     seen: set[str] = set()
     ordered_parent_ids: list[str] = []
     for child in children:
@@ -78,7 +105,10 @@ def query(request: QueryRequest):
             seen.add(child.parent_id)
             ordered_parent_ids.append(child.parent_id)
 
+    query_parents_returned.labels(mode=RETRIEVAL_MODE).observe(len(ordered_parent_ids))
+
     if not ordered_parent_ids:
+        _log_query(request, children, [], started)
         return QueryResponse(results=[])
 
     parents_col = get_parents_collection()
@@ -105,7 +135,48 @@ def query(request: QueryRequest):
             },
         ))
 
+    _log_query(request, children, [f.metadata.get("parent_id") for f in fragments], started)
     return QueryResponse(results=fragments)
+
+
+def _log_query(request, children, returned_parent_ids, started):
+    """Jeden JSON-owy log line per /query/. Konsumowany przez Loki w Grafanie."""
+    record = {
+        "event": "query",
+        "experiment_id": EXPERIMENT_ID,
+        "query": request.query[:200],
+        "k": request.k,
+        "mode": RETRIEVAL_MODE,
+        "filters": request.filters,
+        "model_name": MODEL_NAME,
+        "child_chunk_size": CHILD_CHUNK_SIZE,
+        "child_chunk_overlap": CHILD_CHUNK_OVERLAP,
+        "parent_max_size": PARENT_MAX_SIZE,
+        "extraction_strategy": EXTRACTION_STRATEGY,
+        "n_children": len(children),
+        "n_parents": len(returned_parent_ids),
+        "top_score": children[0].score if children else None,
+        "children": [
+            {
+                "id": c.id,
+                "parent_id": c.parent_id,
+                "score": round(c.score, 4),
+                "source": c.source,
+                "page": c.page,
+            }
+            for c in children
+        ],
+        "returned_parent_ids": returned_parent_ids,
+        "duration_ms": round((perf_counter() - started) * 1000, 2),
+    }
+    if RETRIEVAL_MODE == "hybrid":
+        record["hybrid"] = {
+            "dense_weight": HYBRID_DENSE_WEIGHT,
+            "sparse_weight": HYBRID_SPARSE_WEIGHT,
+            "rrf_k": HYBRID_RRF_K,
+            "sparse_model": SPARSE_MODEL_NAME,
+        }
+    QUERY_LOG.info(json.dumps(record, ensure_ascii=False, default=str))
 
 
 def _validate_paths_under_source(paths: list[str]) -> list[str]:

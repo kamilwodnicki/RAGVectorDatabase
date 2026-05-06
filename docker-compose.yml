@@ -142,6 +142,29 @@ services:
       - "9400:9400"
     restart: always
 
+  loki:
+    image: grafana/loki:3.4.1
+    container_name: loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    restart: always
+
+  promtail:
+    image: grafana/promtail:3.4.1
+    container_name: promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    depends_on:
+      - loki
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: always
+
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -183,3 +206,5 @@ volumes:
     name: rag_prometheus_data
   grafana_data:
     name: rag_grafana_data
+  loki_data:
+    name: rag_loki_data
