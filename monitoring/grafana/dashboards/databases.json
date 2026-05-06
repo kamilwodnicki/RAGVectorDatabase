@@ -1,0 +1,262 @@
+{
+  "uid": "databases",
+  "title": "Databases",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "tags": ["rag", "databases"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Qdrant",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Qdrant — RAM (resident)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "memory_resident_bytes{job=\"qdrant\"}",
+          "legendFormat": "resident",
+          "refId": "A"
+        },
+        {
+          "expr": "memory_allocated_bytes{job=\"qdrant\"}",
+          "legendFormat": "allocated",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "bytes", "min": 0}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Qdrant — pending writes (update queue)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 1},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "collection_update_queue_length",
+          "legendFormat": "{{id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0}}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Qdrant — page faults (major) /s",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 9},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(process_major_page_faults_total{job=\"qdrant\"}[1m])",
+          "legendFormat": "major",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(process_minor_page_faults_total{job=\"qdrant\"}[1m])",
+          "legendFormat": "minor",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0}}
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Qdrant — vectors stored",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 9},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(collections_vector_total)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Qdrant — collections",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 9},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "collections_total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Qdrant — open file descriptors",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 13},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "process_open_fds{job=\"qdrant\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Qdrant — threads",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 13},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "process_threads{job=\"qdrant\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "MongoDB",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17},
+      "collapsed": false
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Mongo — connection pool",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "mongodb_connections{state=\"current\"}",
+          "legendFormat": "current",
+          "refId": "A"
+        },
+        {
+          "expr": "mongodb_connections{state=\"available\"}",
+          "legendFormat": "available",
+          "refId": "B"
+        },
+        {
+          "expr": "mongodb_connections{state=\"active\"}",
+          "legendFormat": "active",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0}}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Mongo — query latency avg (μs/op)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(mongodb_ss_opLatencies_latency{op_type=\"reads\"}[1m]) / rate(mongodb_ss_opLatencies_ops{op_type=\"reads\"}[1m])",
+          "legendFormat": "reads",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(mongodb_ss_opLatencies_latency{op_type=\"writes\"}[1m]) / rate(mongodb_ss_opLatencies_ops{op_type=\"writes\"}[1m])",
+          "legendFormat": "writes",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(mongodb_ss_opLatencies_latency{op_type=\"commands\"}[1m]) / rate(mongodb_ss_opLatencies_ops{op_type=\"commands\"}[1m])",
+          "legendFormat": "commands",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "µs", "min": 0}}
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Mongo — operations/sec by type",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(mongodb_op_counters_total[1m])",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops", "min": 0}}
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Mongo — RAM (resident, virtual) and page faults",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "mongodb_memory{type=\"resident\"} * 1024 * 1024",
+          "legendFormat": "resident",
+          "refId": "A"
+        },
+        {
+          "expr": "mongodb_memory{type=\"virtual\"} * 1024 * 1024",
+          "legendFormat": "virtual",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "bytes", "min": 0}}
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Mongo — connection pool usage (%)",
+      "gridPos": {"h": 4, "w": 12, "x": 0, "y": 34},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "100 * sum(mongodb_connections{state=\"current\"}) / (sum(mongodb_connections{state=\"current\"}) + sum(mongodb_connections{state=\"available\"}))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 70},
+              {"color": "red", "value": 90}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Mongo — page faults /s (major)",
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 34},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(mongodb_extra_info_page_faults_total[1m])",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0}}
+    }
+  ]
+}

@@ -1,0 +1,224 @@
+{
+  "uid": "host",
+  "title": "Host",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "tags": ["rag", "host"],
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "query": "label_values(node_disk_io_time_seconds_total, device)",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "CPU usage per core (%)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "100 - (avg by (cpu) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)",
+          "legendFormat": "core {{cpu}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100}}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "I/O wait per core (%)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "avg by (cpu) (rate(node_cpu_seconds_total{mode=\"iowait\"}[1m])) * 100",
+          "legendFormat": "core {{cpu}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent", "min": 0}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "RAM (used vs available)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
+          "legendFormat": "used",
+          "refId": "A"
+        },
+        {
+          "expr": "node_memory_MemAvailable_bytes",
+          "legendFormat": "available",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "bytes"}}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Swap used",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes",
+          "legendFormat": "swap used",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_vmstat_pswpin[1m])",
+          "legendFormat": "pages swapped IN /s",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(node_vmstat_pswpout[1m])",
+          "legendFormat": "pages swapped OUT /s",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "bytes"}}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Disk IOPS — $device",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(node_disk_reads_completed_total{device=\"$device\"}[1m])",
+          "legendFormat": "reads/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_disk_writes_completed_total{device=\"$device\"}[1m])",
+          "legendFormat": "writes/s",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "iops"}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Disk throughput — $device",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(node_disk_read_bytes_total{device=\"$device\"}[1m])",
+          "legendFormat": "read",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_disk_written_bytes_total{device=\"$device\"}[1m])",
+          "legendFormat": "write",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "Bps"}}
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Disk latency (avg s/op) — $device",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(node_disk_read_time_seconds_total{device=\"$device\"}[1m]) / rate(node_disk_reads_completed_total{device=\"$device\"}[1m])",
+          "legendFormat": "read",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_disk_write_time_seconds_total{device=\"$device\"}[1m]) / rate(node_disk_writes_completed_total{device=\"$device\"}[1m])",
+          "legendFormat": "write",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(node_disk_io_time_seconds_total{device=\"$device\"}[1m])",
+          "legendFormat": "utilization (1.0 = 100%)",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "CPU temperature per core (°C)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "node_hwmon_temp_celsius{chip=~\".*coretemp.*\"} * on(chip, sensor) group_left(label) node_hwmon_sensor_label{chip=~\".*coretemp.*\"}",
+          "legendFormat": "{{label}}",
+          "refId": "A"
+        },
+        {
+          "expr": "node_hwmon_temp_celsius{chip=~\".*nvme.*\"}",
+          "legendFormat": "NVMe",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "celsius"}}
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "PSI — pressure stall (s/s)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "rate(node_pressure_cpu_waiting_seconds_total[1m])",
+          "legendFormat": "CPU",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_pressure_io_waiting_seconds_total[1m])",
+          "legendFormat": "I/O",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(node_pressure_memory_waiting_seconds_total[1m])",
+          "legendFormat": "memory",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "none", "min": 0}}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Load average",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "node_load1", "legendFormat": "1m", "refId": "A"},
+        {"expr": "node_load5", "legendFormat": "5m", "refId": "B"},
+        {"expr": "node_load15", "legendFormat": "15m", "refId": "C"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "none"}}
+    }
+  ]
+}

@@ -16,6 +16,11 @@ from src.ingest.pipeline import (
 from src.ingest.sparse_embeddings import BM25SparseEmbeddings
 from src.retrieval.filters import InvalidFilterError, build_qdrant_filter
 from src.retrieval.hybrid import retrieve_children
+from src.server.metrics import (
+    mongo_query_duration_seconds,
+    observe,
+    qdrant_query_duration_seconds,
+)
 from src.server.schemas import (
     DocumentFragment,
     IngestRebuildRequest,
@@ -53,14 +58,15 @@ def query(request: QueryRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     try:
-        children = retrieve_children(
-            query=request.query,
-            k=request.k,
-            mode=RETRIEVAL_MODE,
-            dense_embedder=_dense_embedder,
-            sparse_embedder=_get_sparse_embedder(),
-            query_filter=qdrant_filter,
-        )
+        with observe(qdrant_query_duration_seconds, operation="retrieve_children"):
+            children = retrieve_children(
+                query=request.query,
+                k=request.k,
+                mode=RETRIEVAL_MODE,
+                dense_embedder=_dense_embedder,
+                sparse_embedder=_get_sparse_embedder(),
+                query_filter=qdrant_filter,
+            )
     except Exception as e:
         logger.error("Retrieval failed: %s", e, exc_info=True)
         raise HTTPException(status_code=503, detail=str(e))
@@ -76,10 +82,11 @@ def query(request: QueryRequest):
         return QueryResponse(results=[])
 
     parents_col = get_parents_collection()
-    parent_docs = {
-        p["_id"]: p
-        for p in parents_col.find({"_id": {"$in": ordered_parent_ids}})
-    }
+    with observe(mongo_query_duration_seconds, operation="find_parents"):
+        parent_docs = {
+            p["_id"]: p
+            for p in parents_col.find({"_id": {"$in": ordered_parent_ids}})
+        }
 
     fragments = []
     for pid in ordered_parent_ids:
