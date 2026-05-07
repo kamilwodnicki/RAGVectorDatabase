@@ -35,7 +35,9 @@ scrape_configs:
                   event:
                   mode:
                   experiment_id:
+                  base_tag:
             - labels:
                 event:
                 mode:
                 experiment_id:
+                base_tag:

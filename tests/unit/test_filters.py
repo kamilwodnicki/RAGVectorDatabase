@@ -88,4 +88,5 @@ def test_allowed_fields_cover_payload_schema():
 
     assert ALLOWED_FILTER_FIELDS == {
         "source", "filename", "file_extension", "page", "ingested_at", "parent_id",
+        "article_id", "article_date", "article_title",
     }

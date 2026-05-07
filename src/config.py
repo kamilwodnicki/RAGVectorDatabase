@@ -2,19 +2,29 @@ import os
 import torch
 
 PDF_SOURCE_DIR = "./DOKUMENTY"
-MODEL_NAME = "intfloat/multilingual-e5-base"
-EMBEDDING_DIM = 768
+
+# BASE_TAG — pojedynczy switch dla wariantu bazy. Każdy tag ma własną kolekcję
+# w Qdrant ('documents_<tag>') i własną bazę w MongoDB ('rag_<tag>'), więc
+# zmiana modelu/wymiarów wektora/chunkingu tworzy NOWĄ bazę bez nadpisywania
+# poprzedniej. Switch między wariantami = edycja .env + restart rag-server.
+BASE_TAG = os.getenv("BASE_TAG", "default")
+
+MODEL_NAME = os.getenv("MODEL_NAME", "intfloat/multilingual-e5-base")
+EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
 
 API_DEVICE = "cpu"
 INGEST_DEVICE = "cuda" if torch.cuda.is_available() else None
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = 6333
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "documents")
+# Override przez COLLECTION_NAME (rzadkie — np. dla testów); domyślnie
+# wynika z BASE_TAG.
+COLLECTION_NAME = os.getenv("COLLECTION_NAME") or f"documents_{BASE_TAG}"
 
 MONGODB_HOST = os.getenv("MONGODB_HOST", "localhost")
 MONGODB_PORT = int(os.getenv("MONGODB_PORT", "27017"))
-MONGODB_DB = os.getenv("MONGODB_DB", "rag")
+# Override przez MONGODB_DB; domyślnie wynika z BASE_TAG.
+MONGODB_DB = os.getenv("MONGODB_DB") or f"rag_{BASE_TAG}"
 MONGODB_PARENTS_COLLECTION = "parents"
 MONGODB_FILES_METADATA_COLLECTION = "files_metadata"
 
@@ -46,6 +56,7 @@ EXTRACTION_LANGUAGES = [lang.strip() for lang in os.getenv("EXTRACTION_LANGUAGES
 def format_effective_config() -> str:
     lines = [
         "Efektywna konfiguracja:",
+        f"  Base tag:        {BASE_TAG}",
         f"  Qdrant:          host={QDRANT_HOST} port={QDRANT_PORT} collection={COLLECTION_NAME}",
         f"  MongoDB:         host={MONGODB_HOST} port={MONGODB_PORT} db={MONGODB_DB}",
         f"  Model:           {MODEL_NAME} (dim={EMBEDDING_DIM})",

@@ -83,8 +83,8 @@ def test_run_single_file_missing_path_raises_filenotfound():
 def test_run_single_file_unsupported_extension_raises_valueerror(tmp_path):
     from src.ingest.pipeline import run_single_file
 
-    junk = tmp_path / "data.json"
-    junk.write_text("{}")
+    junk = tmp_path / "data.docx"
+    junk.write_text("nope")
 
     with pytest.raises(ValueError, match="Nieobsługiwane rozszerzenie"):
         run_single_file(str(junk))

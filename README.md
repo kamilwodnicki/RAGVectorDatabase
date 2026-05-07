@@ -77,6 +77,48 @@ Dokumenty w ./DOKUMENTY/  (.pdf | .txt | .json)
 
 **Named vectors w Qdrant:** jeden punkt trzyma jednocześnie wektor dense i sparse. Dzięki temu przełączanie trybu wyszukiwania nie wymaga przebudowy bazy.
 
+### Warianty bazy (`BASE_TAG`)
+
+Każda zmiana **modelu**, **wymiarów wektora** lub **chunkingu** definiuje nową bazę. Zamiast nadpisywać starą, projekt wspiera koegzystencję wielu wariantów — każdy w osobnej kolekcji Qdrant (`documents_<tag>`) i osobnej bazie MongoDB (`rag_<tag>`).
+
+```bash
+# baseline (.env)
+BASE_TAG=baseline-e5-768
+MODEL_NAME=intfloat/multilingual-e5-base
+EMBEDDING_DIM=768
+
+docker compose up -d --force-recreate rag-server
+docker compose exec rag-server python manage.py db setup
+docker compose exec rag-server python manage.py ingest run
+
+# nowy wariant — większy model (.env)
+BASE_TAG=e5-large-1024
+MODEL_NAME=intfloat/multilingual-e5-large
+EMBEDDING_DIM=1024
+
+docker compose up -d --force-recreate rag-server
+docker compose exec rag-server python manage.py db setup
+docker compose exec rag-server python manage.py ingest run
+# ↑ baseline-e5-768 NIETKNIĘTA, koegzystują
+
+# powrót do baseline (zero rebuildu)
+sed -i 's/^BASE_TAG=.*/BASE_TAG=baseline-e5-768/' .env
+docker compose up -d --force-recreate rag-server
+```
+
+**Pomocnicze CLI:**
+```bash
+python manage.py db variants     # listuje wszystkie warianty (vectors / parents / files / active)
+python manage.py db drop <tag>   # usuwa wariant (Qdrant collection + Mongo DB)
+python manage.py db status       # info o aktywnym wariancie
+```
+
+**Uwagi:**
+- DOKUMENTY są **wspólne** — pliki źródłowe nie duplikują się.
+- W logach `/query/` jest pole `base_tag` — w Loki/Grafanie filtrujesz po nim, żeby porównać warianty.
+- `EXPERIMENT_ID` to **inna oś** — wewnątrz jednego BASE_TAG-a oznaczasz różne sesje testowe (różne k, filtry, prompty).
+- Disk: każdy wariant = pełna kopia indeksu. Dla 5 wariantów × 100k dokumentów → kilkanaście GB.
+
 ### Obsługiwane formaty źródłowe
 
 | Rozszerzenie | Ekstraktor | Uwagi |

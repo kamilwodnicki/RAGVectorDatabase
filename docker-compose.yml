@@ -48,6 +48,10 @@ services:
       - PYTHONUNBUFFERED=1
       - QDRANT_HOST=qdrant
       - MONGODB_HOST=mongodb
+      - BASE_TAG=${BASE_TAG:-default}
+      - MODEL_NAME=${MODEL_NAME:-intfloat/multilingual-e5-base}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-768}
+      - EXPERIMENT_ID=${EXPERIMENT_ID:-}
       - PARENT_MAX_SIZE=${PARENT_MAX_SIZE:-2000}
       - PARENT_SOFT_SIZE=${PARENT_SOFT_SIZE:-1500}
       - PARENT_COMBINE_UNDER=${PARENT_COMBINE_UNDER:-800}

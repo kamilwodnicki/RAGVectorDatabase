@@ -8,8 +8,10 @@ from fastapi import APIRouter, HTTPException
 
 from src.config import (
     API_DEVICE,
+    BASE_TAG,
     CHILD_CHUNK_OVERLAP,
     CHILD_CHUNK_SIZE,
+    EMBEDDING_DIM,
     EXTRACTION_STRATEGY,
     HYBRID_DENSE_WEIGHT,
     HYBRID_RRF_K,
@@ -147,11 +149,13 @@ def _log_query(request, children, returned_parent_ids, started):
     record = {
         "event": "query",
         "experiment_id": EXPERIMENT_ID,
+        "base_tag": BASE_TAG,
         "query": request.query[:200],
         "k": request.k,
         "mode": RETRIEVAL_MODE,
         "filters": request.filters,
         "model_name": MODEL_NAME,
+        "embedding_dim": EMBEDDING_DIM,
         "child_chunk_size": CHILD_CHUNK_SIZE,
         "child_chunk_overlap": CHILD_CHUNK_OVERLAP,
         "parent_max_size": PARENT_MAX_SIZE,
