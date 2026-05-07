@@ -132,6 +132,9 @@ def query(request: QueryRequest):
                 "page": p.get("page"),
                 "ingested_at": p.get("ingested_at"),
                 "parent_id": pid,
+                "article_id": p.get("article_id"),
+                "article_date": p.get("article_date"),
+                "article_title": p.get("article_title"),
             },
         ))
 

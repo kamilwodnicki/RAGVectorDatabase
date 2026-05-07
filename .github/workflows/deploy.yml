@@ -79,7 +79,7 @@ jobs:
             DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             RELEASE_ID="${{ steps.rel.outputs.id }}"
             mkdir -p "$DEPLOY_PATH/releases/$RELEASE_ID"
-            mkdir -p "$DEPLOY_PATH/shared/DOKUMENTY" "$DEPLOY_PATH/shared/METADATA"
+            mkdir -p "$DEPLOY_PATH/shared/DOKUMENTY"
             if [ ! -f "$DEPLOY_PATH/shared/.env" ]; then
               echo "FATAL: $DEPLOY_PATH/shared/.env is missing. Create it before deploying."
               exit 1
@@ -99,7 +99,6 @@ jobs:
             --exclude=/tests
             --exclude=/logs
             --exclude=/DOKUMENTY
-            --exclude=/METADATA
             --exclude=/.env
             --exclude=__pycache__
             --exclude=*.pyc
@@ -127,7 +126,6 @@ jobs:
 
             mkdir -p "$REL/logs"
             ln -sfn "$DEPLOY_PATH/shared/DOKUMENTY" "$REL/DOKUMENTY"
-            ln -sfn "$DEPLOY_PATH/shared/METADATA" "$REL/METADATA"
             ln -sfn "$DEPLOY_PATH/shared/.env" "$REL/.env"
 
             ln -sfn "$REL" "$DEPLOY_PATH/current"

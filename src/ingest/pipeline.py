@@ -40,7 +40,7 @@ from src.ingest.embeddings import E5HuggingFaceEmbeddings
 from src.ingest.sparse_embeddings import BM25SparseEmbeddings
 
 
-SUPPORTED_EXTENSIONS = (".pdf", ".txt")
+SUPPORTED_EXTENSIONS = (".pdf", ".txt", ".json")
 
 
 @dataclass
@@ -84,7 +84,7 @@ def _ensure_cuda() -> None:
 def _list_source_files(source_dir: str) -> list[Path]:
     return [
         p for p in sorted(Path(source_dir).rglob("*"))
-        if p.is_file() and p.suffix.lower() in (".pdf", ".txt")
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
     ]
 
 
@@ -105,11 +105,20 @@ def _ingest_one_file(
     dense_embedder: E5HuggingFaceEmbeddings,
     sparse_embedder: BM25SparseEmbeddings,
 ) -> tuple[list[str], list[str]]:
-    elements = extract_single_file(path, strategy=strategy)
+    elements, extra_meta = extract_single_file(path, strategy=strategy)
     if not elements:
+        # Plik celowo pusty (np. JSON z content="") albo extract nic nie zwrócił.
+        # Zapisz hash z pustymi listami, żeby kolejne `ingest run` dawało SKIP zamiast
+        # próbować ponownie i znów logować WARN.
+        upsert_file_metadata(
+            file_path=str(path),
+            content_hash=content_hash,
+            parent_doc_ids=[],
+            child_vector_ids=[],
+        )
         return [], []
 
-    parents, children = chunk_file_elements(path, elements)
+    parents, children = chunk_file_elements(path, elements, extra_metadata=extra_meta)
     if parents:
         get_parents_collection().insert_many(parents)
 
@@ -142,6 +151,9 @@ def _ingest_one_file(
                     "file_extension": child.metadata["file_extension"],
                     "page": child.metadata.get("page"),
                     "ingested_at": child.metadata["ingested_at"],
+                    "article_id": child.metadata.get("article_id"),
+                    "article_date": child.metadata.get("article_date"),
+                    "article_title": child.metadata.get("article_title"),
                 },
             ))
 

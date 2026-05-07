@@ -14,6 +14,9 @@ ALLOWED_FILTER_FIELDS = {
     "page",
     "ingested_at",
     "parent_id",
+    "article_id",
+    "article_date",
+    "article_title",
 }
 
 _RANGE_OPS = {"gte", "lte", "gt", "lt"}

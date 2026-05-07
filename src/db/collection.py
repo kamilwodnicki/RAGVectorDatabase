@@ -26,6 +26,9 @@ _PAYLOAD_INDEXES: dict[str, PayloadSchemaType] = {
     "parent_id": PayloadSchemaType.KEYWORD,
     "page": PayloadSchemaType.INTEGER,
     "ingested_at": PayloadSchemaType.DATETIME,
+    "article_id": PayloadSchemaType.KEYWORD,
+    "article_date": PayloadSchemaType.DATETIME,
+    "article_title": PayloadSchemaType.TEXT,
 }
 
 

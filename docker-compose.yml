@@ -34,7 +34,6 @@ services:
     volumes:
       - .:/app
       - ./DOKUMENTY:/app/DOKUMENTY
-      - ./METADATA:/app/METADATA
       - ./logs:/app/logs
     ports:
       - "8000:8000"

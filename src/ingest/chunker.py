@@ -12,7 +12,11 @@ from src.config import (
 )
 
 
-def chunk_file_elements(path: Path, elements) -> tuple[list[dict], list[Document]]:
+def chunk_file_elements(
+    path: Path,
+    elements,
+    extra_metadata: dict | None = None,
+) -> tuple[list[dict], list[Document]]:
     from unstructured.chunking.title import chunk_by_title
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -36,6 +40,7 @@ def chunk_file_elements(path: Path, elements) -> tuple[list[dict], list[Document
     filename = path.name
     file_extension = path.suffix.lower().lstrip(".")
     ingested_at = datetime.now(timezone.utc).isoformat()
+    extra = extra_metadata or {}
 
     parents: list[dict] = []
     children: list[Document] = []
@@ -44,7 +49,7 @@ def chunk_file_elements(path: Path, elements) -> tuple[list[dict], list[Document
         parent_id = str(uuid.uuid4())
         page = getattr(pc.metadata, "page_number", None)
 
-        parents.append({
+        parent_doc = {
             "_id": parent_id,
             "text": pc.text,
             "source": source,
@@ -52,19 +57,23 @@ def chunk_file_elements(path: Path, elements) -> tuple[list[dict], list[Document
             "file_extension": file_extension,
             "page": page,
             "ingested_at": ingested_at,
-        })
+            **extra,
+        }
+        parents.append(parent_doc)
 
+        child_meta_base = {
+            "parent_id": parent_id,
+            "source": source,
+            "filename": filename,
+            "file_extension": file_extension,
+            "page": page,
+            "ingested_at": ingested_at,
+            **extra,
+        }
         for child_text in child_splitter.split_text(pc.text):
             children.append(Document(
                 page_content=child_text,
-                metadata={
-                    "parent_id": parent_id,
-                    "source": source,
-                    "filename": filename,
-                    "file_extension": file_extension,
-                    "page": page,
-                    "ingested_at": ingested_at,
-                },
+                metadata=dict(child_meta_base),
             ))
 
     return parents, children

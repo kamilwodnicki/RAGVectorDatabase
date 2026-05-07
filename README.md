@@ -45,9 +45,14 @@ System RAG (Retrieval-Augmented Generation) dla dokumentów wielojęzycznych —
 ## Architektura danych
 
 ```
-Dokumenty w ./DOKUMENTY/
+Dokumenty w ./DOKUMENTY/  (.pdf | .txt | .json)
            ↓
-    unstructured.partition (fast | hi_res)
+    extractor (per-extension):
+      .pdf  → unstructured.partition_pdf (fast | hi_res)
+      .txt  → unstructured.partition_text
+      .json → article loader (id/date/title/content)
+           ↓
+    cleaner: NFKC, (cid:NNNN) removal, hyphen-break fix, whitespace
            ↓
   chunker:  chunk_by_title → parenty (~2000 znaków)
             RecursiveCharacterTextSplitter → children (~400 znaków)
@@ -59,7 +64,8 @@ Dokumenty w ./DOKUMENTY/
   │  - payload: source,        │    (hash, powiązane ID)    │
   │    filename, file_ext,     │                            │
   │    page, ingested_at,      │                            │
-  │    parent_id, text         │                            │
+  │    parent_id, text,        │                            │
+  │    article_id/date/title   │                            │
   └────────────────────────────┴────────────────────────────┘
            ↓
     POST /query/ →  retrieval (dense | sparse | hybrid)
@@ -70,6 +76,29 @@ Dokumenty w ./DOKUMENTY/
 **Dlaczego parent/child:** mały chunk trafnie dopasowuje się do zapytania (precision), duży rodzic daje LLM-owi dostateczny kontekst (recall). Każdy child nosi `parent_id` w payloadzie, po dopasowaniu jest rozwiązywany do parenta.
 
 **Named vectors w Qdrant:** jeden punkt trzyma jednocześnie wektor dense i sparse. Dzięki temu przełączanie trybu wyszukiwania nie wymaga przebudowy bazy.
+
+### Obsługiwane formaty źródłowe
+
+| Rozszerzenie | Ekstraktor | Uwagi |
+|---|---|---|
+| `.pdf` | `unstructured.partition_pdf` | strategia `fast` (pdfminer) lub `hi_res` (OCR + layout) |
+| `.txt` | `unstructured.partition_text` | zwykły tekst |
+| `.json` | `extract_json_article` | artykuł w schemacie `{id, date, title, content}` |
+
+**Format `.json`:**
+
+```json
+{
+  "id": "52",
+  "date": "2004-01-09",
+  "title": "Teatry walczą o ustawę",
+  "content": "Pełen tekst artykułu..."
+}
+```
+
+- `content` pusty (`""`) → plik **pomijany** (zapisywany hash, kolejne `ingest run` nie próbuje powtórnie)
+- `id`, `date`, `title` → trafiają do payloadu Qdranta jako `article_id`, `article_date`, `article_title` (z indeksami) i do MongoDB parents → można po nich filtrować w `/query/` i widzisz je w odpowiedzi
+- pole `date` traktowane jako `datetime` w Qdrant payload — wspiera range queries (`{"article_date": {"gte": "2020-01-01"}}`)
 
 ---
 
@@ -125,7 +154,7 @@ Zmiana `CUDA_VARIANT` wymaga `make build` (nowe wheele w obrazie).
 cp .env.example .env
 # Otwórz .env i ustaw CUDA_VARIANT zgodnie ze swoją kartą.
 
-# 2. Wrzuć dokumenty
+# 2. Wrzuć dokumenty (.pdf, .txt lub .json — patrz "Obsługiwane formaty źródłowe")
 cp twoje_dokumenty/*.pdf ./DOKUMENTY/
 
 # 3. Build + start (pierwszy raz trwa dłużej — pobiera obrazy, buduje)
@@ -250,7 +279,7 @@ python manage.py ingest file ./DOKUMENTY/skan.pdf --strategy hi_res
 
 **Błędy:**
 - Plik nie istnieje → `BŁĄD: Plik nie istnieje lub nie jest plikiem: ...` (exit 1)
-- Nieobsługiwane rozszerzenie → `BŁĄD: Nieobsługiwane rozszerzenie '.json'. Dozwolone: .pdf, .txt`
+- Nieobsługiwane rozszerzenie → `BŁĄD: Nieobsługiwane rozszerzenie '.docx'. Dozwolone: .pdf, .txt, .json`
 - Brak GPU → `BŁĄD: Ingest wymaga GPU (CUDA), ale jest niedostępne.`
 
 ### `serve` — API
@@ -288,7 +317,7 @@ Przy starcie drukuje efektywną konfigurację (`format_effective_config()`) — 
 
 Pole `filters` zawęża kandydatów **przed** liczeniem podobieństwa — filtrowanie odbywa się po stronie Qdrant na indeksach payloadowych, więc jest szybkie nawet na dużych zbiorach.
 
-**Dozwolone pola:** `source`, `filename`, `file_extension`, `page`, `ingested_at`, `parent_id`. Pole `text` nie jest dozwolone (i nie miałoby sensu — treść to przecież to, co dopasowuje `query`).
+**Dozwolone pola:** `source`, `filename`, `file_extension`, `page`, `ingested_at`, `parent_id`, `article_id`, `article_date`, `article_title`. Pole `text` nie jest dozwolone (i nie miałoby sensu — treść to przecież to, co dopasowuje `query`).
 
 **Warianty wartości:**
 
@@ -315,6 +344,12 @@ Wszystkie warunki łączone **AND** (Qdrant `must`).
     "ingested_at": {"gte": "2026-01-01T00:00:00+00:00"},
     "file_extension": "pdf"
 }}
+
+{ "query": "reforma teatrów", "filters": {
+    "article_date": {"gte": "2000-01-01", "lte": "2010-12-31"}
+}}
+
+{ "query": "...", "filters": {"article_id": ["52", "108", "203"]} }
 ```
 
 **Błędy:**
@@ -337,7 +372,10 @@ Wszystkie warunki łączone **AND** (Qdrant `must`).
         "file_extension": "pdf",
         "page": 5,
         "ingested_at": "2026-04-23T14:32:17+00:00",
-        "parent_id": "a3f1b2c4-..."
+        "parent_id": "a3f1b2c4-...",
+        "article_id": null,
+        "article_date": null,
+        "article_title": null
       }
     }
   ]
@@ -918,12 +956,10 @@ $DEPLOY_PATH/
 │   │   ├── src/, docker-compose.yml, Dockerfile, ...
 │   │   ├── logs/                                  # logi tego release (lokalne)
 │   │   ├── DOKUMENTY → ../../shared/DOKUMENTY     # symlink do trwałych danych
-│   │   ├── METADATA  → ../../shared/METADATA
 │   │   └── .env      → ../../shared/.env
 │   └── ...
 └── shared/
     ├── DOKUMENTY/        # korpus dokumentów (trwałe)
-    ├── METADATA/         # metadata artykułów (trwałe)
     └── .env              # sekrety i konfiguracja (trwałe)
 ```
 
@@ -939,7 +975,7 @@ $DEPLOY_PATH/
    - mieć prawa zapisu do `$DEPLOY_PATH`
 2. **Struktura katalogów**:
    ```bash
-   sudo mkdir -p $DEPLOY_PATH/{releases,shared/DOKUMENTY,shared/METADATA}
+   sudo mkdir -p $DEPLOY_PATH/{releases,shared/DOKUMENTY}
    sudo touch $DEPLOY_PATH/shared/.env  # uzupełnij realną konfiguracją
    sudo chown -R gh-deployer:gh-deployer $DEPLOY_PATH
    ```
@@ -986,7 +1022,7 @@ Settings → Branches → Add rule dla `main`:
    1. Pobiera kod z taga.
    2. Weryfikuje, że `unit-tests` przeszły zielono dla commita pod tagiem (fail-fast jeśli nie).
    3. Tworzy `releases/v0.1.0_<timestamp>/` na serwerze.
-   4. rsynchronizuje kod (z exclude'ami: `.git`, `tests`, `DOKUMENTY`, `METADATA`, `.env` itd.).
+   4. rsynchronizuje kod (z exclude'ami: `.git`, `tests`, `DOKUMENTY`, `.env` itd.).
    5. Linkuje `shared/*` do release.
    6. Atomowo przepina symlink `current`.
    7. `docker compose up -d --build`.
@@ -1034,11 +1070,11 @@ Bez rebuildu, w sekundy. **Dane (DOKUMENTY, MongoDB, Qdrant) pozostają nietkni�
 
 ```
 .
-├── DOKUMENTY/                  # Wejście: PDF/TXT do zaindeksowania (volume w Dockerze)
+├── DOKUMENTY/                  # Wejście: .pdf / .txt / .json (volume w Dockerze)
 ├── src/
 │   ├── config.py               # Wszystkie zmienne env + format_effective_config()
 │   ├── commands/               # CLI (db, ingest)
-│   ├── extractor/              # partition_pdf/partition_text + cleaner (NFKC, CID, hyphen)
+│   ├── extractor/              # partition_pdf / partition_text / json_article + cleaner
 │   ├── ingest/
 │   │   ├── chunker.py          # chunk_by_title → parenty, RecursiveSplitter → children
 │   │   ├── embeddings.py       # E5 z prefixami passage:/query:
