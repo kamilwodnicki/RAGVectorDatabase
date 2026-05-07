@@ -12,6 +12,19 @@ BASE_TAG = os.getenv("BASE_TAG", "default")
 MODEL_NAME = os.getenv("MODEL_NAME", "intfloat/multilingual-e5-base")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
 
+# Styl promptu embedderów. Różne rodziny modeli potrzebują różnego prompting:
+#   e5    — prefix "passage: " (dokumenty) i "query: " (zapytanie). Dla rodziny intfloat/e5*.
+#   qwen3 — Qwen3-Embedding: dokumenty raw, zapytanie z instrukcją.
+#   none  — bez prefixu. Dla modeli typu BGE-M3, MMLW i innych "raw input" embedderów.
+EMBEDDING_PROMPT_STYLE = os.getenv("EMBEDDING_PROMPT_STYLE", "e5").lower()
+
+# Instrukcja dla Qwen3 (i kompatybilnych instruction-tuned embedderów). Domyślna
+# dobra dla retrieval; możesz przestawić per-domena jeśli eksperymentujesz.
+QWEN3_INSTRUCTION = os.getenv(
+    "QWEN3_INSTRUCTION",
+    "Given a web search query, retrieve relevant passages that answer the query",
+)
+
 API_DEVICE = "cpu"
 INGEST_DEVICE = "cuda" if torch.cuda.is_available() else None
 
@@ -59,7 +72,7 @@ def format_effective_config() -> str:
         f"  Base tag:        {BASE_TAG}",
         f"  Qdrant:          host={QDRANT_HOST} port={QDRANT_PORT} collection={COLLECTION_NAME}",
         f"  MongoDB:         host={MONGODB_HOST} port={MONGODB_PORT} db={MONGODB_DB}",
-        f"  Model:           {MODEL_NAME} (dim={EMBEDDING_DIM})",
+        f"  Model:           {MODEL_NAME} (dim={EMBEDDING_DIM} style={EMBEDDING_PROMPT_STYLE})",
         f"  Urządzenia:      ingest={INGEST_DEVICE} api={API_DEVICE}",
         f"  Parent chunking: max={PARENT_MAX_SIZE} soft={PARENT_SOFT_SIZE} "
         f"combine_under={PARENT_COMBINE_UNDER} overlap={PARENT_OVERLAP}",

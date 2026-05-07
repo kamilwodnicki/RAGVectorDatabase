@@ -8,10 +8,10 @@ langchain-qdrant
 langchain-text-splitters
 qdrant-client
 pymongo
-sentence-transformers
+sentence-transformers>=2.7.0
 fastembed
 numpy<2
-transformers<4.47.0
+transformers>=4.51.0,<5.0
 unstructured[pdf]
 requests
 pandas
