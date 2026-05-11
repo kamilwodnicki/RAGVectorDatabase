@@ -68,4 +68,5 @@ def observe(histogram: Histogram, **labels):
     try:
         yield
     finally:
-        histogram.labels(**labels).observe(perf_counter() - start)
+        target = histogram.labels(**labels) if labels else histogram
+        target.observe(perf_counter() - start)
