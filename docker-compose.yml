@@ -35,6 +35,7 @@ services:
       - .:/app
       - ./DOKUMENTY:/app/DOKUMENTY
       - ./logs:/app/logs
+      - hf_cache:/root/.cache/huggingface
     ports:
       - "8000:8000"
     deploy:
@@ -215,3 +216,5 @@ volumes:
     name: rag_grafana_data
   loki_data:
     name: rag_loki_data
+  hf_cache:
+    name: rag_hf_cache
