@@ -41,6 +41,9 @@ scrape_configs:
         refresh_interval: 5s
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
+        regex: '/rag-server'
+        action: drop
+      - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: container
       - source_labels: ['__meta_docker_container_log_stream']
@@ -49,21 +52,3 @@ scrape_configs:
         target_label: service
     pipeline_stages:
       - docker: {}
-      - match:
-          selector: '{container="rag-server"}'
-          stages:
-            - regex:
-                expression: '\[INFO\] rag\.query: (?P<json>\{.*\})'
-            - output:
-                source: json
-            - json:
-                expressions:
-                  event:
-                  mode:
-                  experiment_id:
-                  base_tag:
-            - labels:
-                event:
-                mode:
-                experiment_id:
-                base_tag:
