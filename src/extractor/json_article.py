@@ -12,11 +12,11 @@ def extract_json_article(path: Path) -> tuple[list, dict] | tuple[None, None]:
         (elements, extra_meta)  — lista elementów unstructured + metadata artykułu
         (None, None)            — content pusty → ingest powinien skipnąć
 
-    Pole `content` jest traktowane jako czysty tekst i opakowane w NarrativeText.
-    `title` (jeśli niepusty) leci jako osobny element Title — daje chunk_by_title
-    naturalny punkt podziału. Jeśli JSON jest niepoprawny / brakuje pól → wyjątek.
+    Tytuł (jeśli niepusty) zostaje doklejony jako prefiks treści w jednym
+    NarrativeText. Osobny element Title powodował, że chunk_by_title tworzył
+    samotny parent zawierający tylko tytuł — szum w retrievalu.
     """
-    from unstructured.documents.elements import NarrativeText, Title
+    from unstructured.documents.elements import NarrativeText
 
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -25,11 +25,9 @@ def extract_json_article(path: Path) -> tuple[list, dict] | tuple[None, None]:
     if not content:
         return None, None
 
-    elements: list = []
     title = (data.get("title") or "").strip()
-    if title:
-        elements.append(Title(text=title))
-    elements.append(NarrativeText(text=content))
+    text = f"{title}\n\n{content}" if title else content
+    elements: list = [NarrativeText(text=text)]
 
     extra_meta = {
         "article_id": str(data["id"]) if data.get("id") is not None else None,
