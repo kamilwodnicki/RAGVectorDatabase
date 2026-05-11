@@ -17,7 +17,7 @@
         "refresh": 1,
         "includeAll": false,
         "multi": false,
-        "current": {}
+        "current": {"text": "sdb", "value": "sdb", "selected": true}
       }
     ]
   },
