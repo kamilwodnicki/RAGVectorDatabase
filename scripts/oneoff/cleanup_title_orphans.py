@@ -19,7 +19,12 @@ Po wykonaniu i weryfikacji — usunąć ten plik z repo.
 
 import argparse
 import logging
+import sys
 from collections import defaultdict
+from pathlib import Path
+
+# pozwala odpalić skrypt bezpośrednio z /app (nie jest częścią pakietu src)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from qdrant_client.models import FieldCondition, Filter, MatchAny, PointIdsList
 
