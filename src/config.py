@@ -63,6 +63,19 @@ HYBRID_DENSE_WEIGHT = float(os.getenv("HYBRID_DENSE_WEIGHT", "1.0"))
 HYBRID_SPARSE_WEIGHT = float(os.getenv("HYBRID_SPARSE_WEIGHT", "1.0"))
 HYBRID_RRF_K = int(os.getenv("HYBRID_RRF_K", "60"))
 
+# Reranker — opcjonalny krok po retrievalu, ocenia pary (query, parent_text)
+# cross-encoderem. Mocno poprawia precyzję top-k kosztem ~50-500 ms latency.
+# Włącz przez RERANKER_ENABLED=true w .env.
+RERANKER_ENABLED = os.getenv("RERANKER_ENABLED", "false").lower() == "true"
+RERANKER_MODEL = os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
+RERANKER_DEVICE = os.getenv("RERANKER_DEVICE", "cpu")
+# Ile children pobrać z retrieval przed dedupem do parentów. Większe = lepsza
+# precyzja po rerankowaniu, kosztem wolniejszego rerankingu. Typowo 20-50.
+RERANKER_RETRIEVE_K = int(os.getenv("RERANKER_RETRIEVE_K", "20"))
+# Limit znaków parenta przekazywanych do rerankera. bge-reranker-v2-m3 ma
+# max_length 512 tokenów ≈ 1500-2000 znaków polskich.
+RERANKER_MAX_PARENT_CHARS = int(os.getenv("RERANKER_MAX_PARENT_CHARS", "2000"))
+
 EXTRACTION_STRATEGY = os.getenv("EXTRACTION_STRATEGY", "fast")
 EXTRACTION_LANGUAGES = [lang.strip() for lang in os.getenv("EXTRACTION_LANGUAGES", "pol,eng").split(",") if lang.strip()]
 
@@ -82,6 +95,8 @@ def format_effective_config() -> str:
         f"  Hybrid:          dense_weight={HYBRID_DENSE_WEIGHT} "
         f"sparse_weight={HYBRID_SPARSE_WEIGHT} rrf_k={HYBRID_RRF_K} "
         f"sparse_model={SPARSE_MODEL_NAME}",
+        f"  Reranker:        enabled={RERANKER_ENABLED} model={RERANKER_MODEL} "
+        f"device={RERANKER_DEVICE} retrieve_k={RERANKER_RETRIEVE_K}",
         f"  Ekstrakcja:      strategy={EXTRACTION_STRATEGY} languages={EXTRACTION_LANGUAGES}",
     ]
     return "\n".join(lines)

@@ -19,6 +19,9 @@ from src.config import (
     MODEL_NAME,
     PARENT_MAX_SIZE,
     PDF_SOURCE_DIR,
+    RERANKER_ENABLED,
+    RERANKER_MODEL,
+    RERANKER_RETRIEVE_K,
     RETRIEVAL_MODE,
     SPARSE_MODEL_NAME,
 )
@@ -34,6 +37,7 @@ from src.ingest.pipeline import (
 from src.ingest.sparse_embeddings import BM25SparseEmbeddings
 from src.retrieval.filters import InvalidFilterError, build_qdrant_filter
 from src.retrieval.hybrid import retrieve_children
+from src.retrieval.reranker import RerankCandidate, RerankResult, Reranker
 from src.server.metrics import (
     mongo_query_duration_seconds,
     observe,
@@ -41,6 +45,8 @@ from src.server.metrics import (
     qdrant_query_duration_seconds,
     qdrant_top_score,
     query_parents_returned,
+    reranker_candidates_count,
+    reranker_duration_seconds,
 )
 
 QUERY_LOG = logging.getLogger("rag.query")
@@ -60,6 +66,7 @@ router = APIRouter()
 
 _dense_embedder = E5HuggingFaceEmbeddings(device=API_DEVICE)
 _sparse_embedder: BM25SparseEmbeddings | None = None
+_reranker: Reranker | None = None
 
 
 def _get_sparse_embedder() -> BM25SparseEmbeddings | None:
@@ -69,12 +76,21 @@ def _get_sparse_embedder() -> BM25SparseEmbeddings | None:
     return _sparse_embedder
 
 
+def _get_reranker() -> Reranker | None:
+    global _reranker
+    if not RERANKER_ENABLED:
+        return None
+    if _reranker is None:
+        _reranker = Reranker()
+    return _reranker
+
+
 @router.post("/query/", response_model=QueryResponse)
 def query(request: QueryRequest):
     started = perf_counter()
     logger.info(
-        "Query: k=%d mode=%s filters=%s query=%r",
-        request.k, RETRIEVAL_MODE, request.filters, request.query[:200],
+        "Query: k=%d mode=%s reranker=%s filters=%s query=%r",
+        request.k, RETRIEVAL_MODE, RERANKER_ENABLED, request.filters, request.query[:200],
     )
     try:
         qdrant_filter = build_qdrant_filter(request.filters)
@@ -82,11 +98,14 @@ def query(request: QueryRequest):
         logger.warning("Filtr odrzucony: %s", e)
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Z rerankerem pobieramy więcej kandydatów, żeby reranker miał z czego wybierać.
+    retrieve_k = max(RERANKER_RETRIEVE_K, request.k) if RERANKER_ENABLED else request.k
+
     try:
         with observe(qdrant_query_duration_seconds, operation="retrieve_children"):
             children = retrieve_children(
                 query=request.query,
-                k=request.k,
+                k=retrieve_k,
                 mode=RETRIEVAL_MODE,
                 dense_embedder=_dense_embedder,
                 sparse_embedder=_get_sparse_embedder(),
@@ -100,19 +119,21 @@ def query(request: QueryRequest):
     if children:
         qdrant_top_score.labels(mode=RETRIEVAL_MODE).observe(children[0].score)
 
-    seen: set[str] = set()
+    # Dedupe parent_id, zachowując kolejność z RRF, zapamiętując best retrieval score per parent
+    retrieval_score_by_parent: dict[str, float] = {}
     ordered_parent_ids: list[str] = []
     for child in children:
-        if child.parent_id and child.parent_id not in seen:
-            seen.add(child.parent_id)
+        if child.parent_id and child.parent_id not in retrieval_score_by_parent:
+            retrieval_score_by_parent[child.parent_id] = child.score
             ordered_parent_ids.append(child.parent_id)
 
     query_parents_returned.labels(mode=RETRIEVAL_MODE).observe(len(ordered_parent_ids))
 
     if not ordered_parent_ids:
-        _log_query(request, children, [], started)
+        _log_query(request, children, [], [], started)
         return QueryResponse(results=[])
 
+    # Fetch wszystkich kandydatów z Mongo — potrzebny pełen tekst do rerankera albo do response'a
     parents_col = get_parents_collection()
     with observe(mongo_query_duration_seconds, operation="find_parents"):
         parent_docs = {
@@ -120,8 +141,32 @@ def query(request: QueryRequest):
             for p in parents_col.find({"_id": {"$in": ordered_parent_ids}})
         }
 
+    # Reranking — jeśli włączony, przeszereguj kandydatów po cross-encoder score'ie
+    rerank_results: list[RerankResult] = []
+    reranker = _get_reranker()
+    if reranker is not None:
+        candidates = [
+            RerankCandidate(
+                parent_id=pid,
+                text=parent_docs[pid]["text"],
+                retrieval_score=retrieval_score_by_parent[pid],
+            )
+            for pid in ordered_parent_ids
+            if pid in parent_docs
+        ]
+        reranker_candidates_count.observe(len(candidates))
+        try:
+            with observe(reranker_duration_seconds):
+                rerank_results = reranker.rerank(request.query, candidates)
+            final_parent_ids = [r.parent_id for r in rerank_results[:request.k]]
+        except Exception as e:
+            logger.error("Reranker failed, fallback do kolejności retrievalu: %s", e, exc_info=True)
+            final_parent_ids = ordered_parent_ids[:request.k]
+    else:
+        final_parent_ids = ordered_parent_ids[:request.k]
+
     fragments = []
-    for pid in ordered_parent_ids:
+    for pid in final_parent_ids:
         p = parent_docs.get(pid)
         if not p:
             continue
@@ -140,11 +185,17 @@ def query(request: QueryRequest):
             },
         ))
 
-    _log_query(request, children, [f.metadata.get("parent_id") for f in fragments], started)
+    _log_query(
+        request,
+        children,
+        [f.metadata.get("parent_id") for f in fragments],
+        rerank_results,
+        started,
+    )
     return QueryResponse(results=fragments)
 
 
-def _log_query(request, children, returned_parent_ids, started):
+def _log_query(request, children, returned_parent_ids, rerank_results, started):
     """Jeden JSON-owy log line per /query/. Konsumowany przez Loki w Grafanie."""
     record = {
         "event": "query",
@@ -182,6 +233,21 @@ def _log_query(request, children, returned_parent_ids, started):
             "sparse_weight": HYBRID_SPARSE_WEIGHT,
             "rrf_k": HYBRID_RRF_K,
             "sparse_model": SPARSE_MODEL_NAME,
+        }
+    if RERANKER_ENABLED:
+        record["reranker"] = {
+            "enabled": True,
+            "model": RERANKER_MODEL,
+            "retrieve_k": RERANKER_RETRIEVE_K,
+            "n_reranked": len(rerank_results),
+            "scores": [
+                {
+                    "parent_id": r.parent_id,
+                    "rerank_score": round(r.rerank_score, 4),
+                    "retrieval_score": round(r.retrieval_score, 4),
+                }
+                for r in rerank_results
+            ],
         }
     QUERY_LOG.info(json.dumps(record, ensure_ascii=False, default=str))
 

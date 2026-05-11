@@ -49,6 +49,18 @@ qdrant_top_score = Histogram(
     buckets=(0.0, 0.3, 0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 0.99, 1.0),
 )
 
+reranker_duration_seconds = Histogram(
+    "reranker_duration_seconds",
+    "Czas rerankingu kandydatów (cross-encoder) per /query/.",
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0),
+)
+
+reranker_candidates_count = Histogram(
+    "reranker_candidates_count",
+    "Liczba kandydatów przekazanych do rerankera per /query/.",
+    buckets=(0, 5, 10, 20, 50, 100),
+)
+
 
 @contextmanager
 def observe(histogram: Histogram, **labels):
