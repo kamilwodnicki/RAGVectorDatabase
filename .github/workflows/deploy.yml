@@ -80,6 +80,7 @@ jobs:
             RELEASE_ID="${{ steps.rel.outputs.id }}"
             mkdir -p "$DEPLOY_PATH/releases/$RELEASE_ID"
             mkdir -p "$DEPLOY_PATH/shared/DOKUMENTY"
+            mkdir -p "$DEPLOY_PATH/shared/logs"
             if [ ! -f "$DEPLOY_PATH/shared/.env" ]; then
               echo "FATAL: $DEPLOY_PATH/shared/.env is missing. Create it before deploying."
               exit 1
@@ -124,14 +125,14 @@ jobs:
             RELEASE_ID="${{ steps.rel.outputs.id }}"
             REL="$DEPLOY_PATH/releases/$RELEASE_ID"
 
-            mkdir -p "$REL/logs"
+            ln -sfn "$DEPLOY_PATH/shared/logs" "$REL/logs"
             ln -sfn "$DEPLOY_PATH/shared/DOKUMENTY" "$REL/DOKUMENTY"
             ln -sfn "$DEPLOY_PATH/shared/.env" "$REL/.env"
 
             ln -sfn "$REL" "$DEPLOY_PATH/current"
 
             cd "$DEPLOY_PATH/current"
-            docker compose up -d --build
+            docker compose up -d --build --force-recreate
             docker compose ps
 
             cd "$DEPLOY_PATH/releases"

@@ -9,6 +9,32 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
+  - job_name: rag-app-file
+    static_configs:
+      - targets: [localhost]
+        labels:
+          container: rag-server
+          job: rag-app-file
+          __path__: /var/log/rag-app/app.log*
+    pipeline_stages:
+      - match:
+          selector: '{container="rag-server"} |~ "rag\\.query: \\{"'
+          stages:
+            - regex:
+                expression: 'rag\.query: (?P<json>\{.*\})'
+            - json:
+                source: json
+                expressions:
+                  event:
+                  mode:
+                  experiment_id:
+                  base_tag:
+            - labels:
+                event:
+                mode:
+                experiment_id:
+                base_tag:
+
   - job_name: docker
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
