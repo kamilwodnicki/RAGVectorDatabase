@@ -47,6 +47,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - QDRANT_HOST=qdrant
+      - QDRANT_CLIENT_TIMEOUT=${QDRANT_CLIENT_TIMEOUT:-60}
       - MONGODB_HOST=mongodb
       - BASE_TAG=${BASE_TAG:-default}
       - MODEL_NAME=${MODEL_NAME:-intfloat/multilingual-e5-base}

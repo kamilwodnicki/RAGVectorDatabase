@@ -30,6 +30,7 @@ INGEST_DEVICE = "cuda" if torch.cuda.is_available() else None
 
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = 6333
+QDRANT_CLIENT_TIMEOUT = int(os.getenv("QDRANT_CLIENT_TIMEOUT", "60"))
 # Override przez COLLECTION_NAME (rzadkie — np. dla testów); domyślnie
 # wynika z BASE_TAG.
 COLLECTION_NAME = os.getenv("COLLECTION_NAME") or f"documents_{BASE_TAG}"
