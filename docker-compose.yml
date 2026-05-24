@@ -81,6 +81,7 @@ services:
       - LOG_DIR=${LOG_DIR:-/app/logs}
     stdin_open: true
     tty: true
+    restart: unless-stopped
 
   node-exporter:
     image: prom/node-exporter:latest
