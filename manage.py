@@ -19,7 +19,7 @@ def serve(
 ):
     typer.echo(format_effective_config())
     typer.echo(f"Uruchamiam serwer API na {host}:{port}...")
-    uvicorn.run("src.server.app:app", host=host, port=port, reload=True)
+    uvicorn.run("src.server.app:app", host=host, port=port)
 
 
 if __name__ == "__main__":
