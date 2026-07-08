@@ -4,7 +4,7 @@ from time import perf_counter
 from prometheus_client import Histogram
 
 LATENCY_BUCKETS = (
-    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 30.0, 45.0, 60.0, 90.0,
 )
 
 http_request_duration_seconds = Histogram(
@@ -52,7 +52,9 @@ qdrant_top_score = Histogram(
 reranker_duration_seconds = Histogram(
     "reranker_duration_seconds",
     "Czas rerankingu kandydatów (cross-encoder) per /query/.",
-    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0),
+    # Reranking na CPU (cross-encoder, ~20 kandydatów) potrafi trwać
+    # kilkanaście–kilkadziesiąt sekund, stąd progi aż do 30 s.
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0),
 )
 
 reranker_candidates_count = Histogram(
