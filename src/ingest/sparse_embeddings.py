@@ -16,13 +16,14 @@ _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 class _PolishStemmer:
     def __init__(self):
-        from stempel import StempelStemmer
+        # pystempel 2.x: import `pystempel.Stemmer`, obiekt jest wołalny (stemmer(word)).
+        from pystempel import Stemmer
 
-        self._stemmer = StempelStemmer.default()
+        self._stemmer = Stemmer.default()
         self._stem_cached = lru_cache(maxsize=200_000)(self._stem_one)
 
     def _stem_one(self, token: str) -> str:
-        stem = self._stemmer.stem(token)
+        stem = self._stemmer(token)
         return stem if stem else token
 
     def stem_text(self, text: str) -> str:
