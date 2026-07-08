@@ -57,6 +57,10 @@ QDRANT_UPSERT_BATCH_SIZE = int(os.getenv("QDRANT_UPSERT_BATCH_SIZE", "256"))
 DENSE_VECTOR_NAME = "dense"
 SPARSE_VECTOR_NAME = "sparse"
 SPARSE_MODEL_NAME = os.getenv("SPARSE_MODEL_NAME", "Qdrant/bm25")
+# Stemmer warstwy sparse (BM25). "none" = wbudowany (angielski) stemmer fastembed;
+# "stempel" = polski algorytmiczny stemmer Stempel (pystempel), a angielski stemmer
+# fastembed jest wtedy wyłączany, żeby nie stemować dwa razy. Zmiana wymaga re-indeksu.
+SPARSE_STEMMER = os.getenv("SPARSE_STEMMER", "none").lower()
 
 RETRIEVAL_MODE = os.getenv("RETRIEVAL_MODE", "hybrid").lower()
 HYBRID_DENSE_WEIGHT = float(os.getenv("HYBRID_DENSE_WEIGHT", "1.0"))
@@ -94,7 +98,7 @@ def format_effective_config() -> str:
         f"  Retrieval:       mode={RETRIEVAL_MODE} default_k={DEFAULT_K}",
         f"  Hybrid:          dense_weight={HYBRID_DENSE_WEIGHT} "
         f"sparse_weight={HYBRID_SPARSE_WEIGHT} rrf_k={HYBRID_RRF_K} "
-        f"sparse_model={SPARSE_MODEL_NAME}",
+        f"sparse_model={SPARSE_MODEL_NAME} sparse_stemmer={SPARSE_STEMMER}",
         f"  Reranker:        enabled={RERANKER_ENABLED} model={RERANKER_MODEL} "
         f"device={RERANKER_DEVICE} retrieve_k={RERANKER_RETRIEVE_K}",
         f"  Ekstrakcja:      strategy={EXTRACTION_STRATEGY} languages={EXTRACTION_LANGUAGES}",

@@ -10,6 +10,7 @@ qdrant-client
 pymongo
 sentence-transformers>=2.7.0
 fastembed
+pystempel
 numpy<2
 transformers>=4.51.0,<5.0
 unstructured[pdf]
