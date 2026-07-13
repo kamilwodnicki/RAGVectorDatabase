@@ -74,6 +74,23 @@ def test_evaluate_returns_SKIP_when_hash_matches(mongo_collection, sample_file):
     assert result.action == FileAction.SKIP
 
 
+def test_evaluate_returns_UPDATE_when_status_is_ERROR_despite_matching_hash(mongo_collection, sample_file):
+    content_hash = _sha256(sample_file.read_bytes())
+    mongo_collection.insert_one({
+        "file_path": str(sample_file),
+        "content_hash": content_hash,
+        "parent_doc_ids": ["p1"],
+        "child_vector_ids": ["c1"],
+        "status": FileStatus.ERROR.value,
+    })
+
+    result = evaluate_file_status(str(sample_file))
+
+    assert result.action == FileAction.UPDATE
+    assert result.old_parent_doc_ids == ["p1"]
+    assert result.old_child_vector_ids == ["c1"]
+
+
 def test_evaluate_returns_UPDATE_with_old_ids_when_hash_differs(mongo_collection, sample_file):
     mongo_collection.insert_one({
         "file_path": str(sample_file),

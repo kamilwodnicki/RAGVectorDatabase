@@ -132,7 +132,7 @@ jobs:
             ln -sfn "$REL" "$DEPLOY_PATH/current"
 
             cd "$DEPLOY_PATH/current"
-            docker compose up -d --build --force-recreate
+            docker compose up -d --build
             docker compose ps
 
             cd "$DEPLOY_PATH/releases"

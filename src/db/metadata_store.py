@@ -84,6 +84,18 @@ def evaluate_file_status(file_path: str) -> FileEvaluation:
             content_hash=content_hash,
         )
 
+    # Rekord z ERROR ma zapisany poprawny content_hash, więc sam porównanie hashy
+    # dałoby SKIP i plik nigdy nie wróciłby do indeksu. Wymuszamy ponowne
+    # przetworzenie (UPDATE sprząta ewentualne resztki po nieudanej próbie).
+    if record.get("status") == FileStatus.ERROR.value:
+        return FileEvaluation(
+            action=FileAction.UPDATE,
+            file_path=file_path,
+            content_hash=content_hash,
+            old_parent_doc_ids=record.get("parent_doc_ids", []),
+            old_child_vector_ids=record.get("child_vector_ids", []),
+        )
+
     if record.get("content_hash") == content_hash:
         return FileEvaluation(
             action=FileAction.SKIP,
