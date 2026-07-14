@@ -15,7 +15,8 @@ EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
 # Styl promptu embedderów. Różne rodziny modeli potrzebują różnego prompting:
 #   e5    — prefix "passage: " (dokumenty) i "query: " (zapytanie). Dla rodziny intfloat/e5*.
 #   qwen3 — Qwen3-Embedding: dokumenty raw, zapytanie z instrukcją.
-#   none  — bez prefixu. Dla modeli typu BGE-M3, MMLW i innych "raw input" embedderów.
+#   mmlw  — sdadas/mmlw-*: dokumenty raw, zapytanie z prefiksem "zapytanie: ".
+#   none  — bez prefixu. Dla modeli typu BGE-M3 i innych "raw input" embedderów.
 EMBEDDING_PROMPT_STYLE = os.getenv("EMBEDDING_PROMPT_STYLE", "e5").lower()
 
 # Instrukcja dla Qwen3 (i kompatybilnych instruction-tuned embedderów). Domyślna

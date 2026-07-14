@@ -59,6 +59,42 @@ def test_embed_documents_handles_empty_list(embeddings, monkeypatch):
     assert captured == [[]]
 
 
+def test_mmlw_style_prepends_zapytanie_prefix_to_query(embeddings, monkeypatch):
+    captured: list[str] = []
+
+    def fake_super_embed_query(self, text):
+        captured.append(text)
+        return [0.0] * 3
+
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from src.ingest import embeddings as embeddings_module
+
+    monkeypatch.setattr(embeddings_module, "EMBEDDING_PROMPT_STYLE", "mmlw")
+    monkeypatch.setattr(HuggingFaceEmbeddings, "embed_query", fake_super_embed_query)
+
+    embeddings.embed_query("kto reżyserował Wesele")
+
+    assert captured == ["zapytanie: kto reżyserował Wesele"]
+
+
+def test_mmlw_style_leaves_documents_without_prefix(embeddings, monkeypatch):
+    captured: list[list[str]] = []
+
+    def fake_super_embed_documents(self, texts):
+        captured.append(list(texts))
+        return [[0.0] * 3 for _ in texts]
+
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from src.ingest import embeddings as embeddings_module
+
+    monkeypatch.setattr(embeddings_module, "EMBEDDING_PROMPT_STYLE", "mmlw")
+    monkeypatch.setattr(HuggingFaceEmbeddings, "embed_documents", fake_super_embed_documents)
+
+    embeddings.embed_documents(["pierwszy", "drugi"])
+
+    assert captured == [["pierwszy", "drugi"]]
+
+
 def test_embed_query_prefix_prepended_exactly_once(embeddings, monkeypatch):
     captured: list[str] = []
 

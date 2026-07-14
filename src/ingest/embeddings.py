@@ -9,7 +9,8 @@ class RAGEmbeddings(HuggingFaceEmbeddings):
     Style:
       e5    — prefix `passage:` / `query:` (intfloat/e5* family)
       qwen3 — instruction-tuned: dokument raw, zapytanie z `Instruct: ...\nQuery: ...`
-      none  — surowy tekst (BGE-M3, MMLW, większość pozostałych)
+      mmlw  — sdadas/mmlw-*: dokument raw, zapytanie z prefiksem `zapytanie: `
+      none  — surowy tekst (BGE-M3, większość pozostałych)
     """
 
     def __init__(self, device: str, *args, **kwargs):
@@ -20,7 +21,7 @@ class RAGEmbeddings(HuggingFaceEmbeddings):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if EMBEDDING_PROMPT_STYLE == "e5":
             return super().embed_documents([f"passage: {t}" for t in texts])
-        # qwen3 / none — dokumenty bez prefixu
+        # qwen3 / mmlw / none — dokumenty bez prefixu
         return super().embed_documents(texts)
 
     def embed_query(self, text: str) -> list[float]:
@@ -28,6 +29,8 @@ class RAGEmbeddings(HuggingFaceEmbeddings):
             return super().embed_query(f"query: {text}")
         if EMBEDDING_PROMPT_STYLE == "qwen3":
             return super().embed_query(f"Instruct: {QWEN3_INSTRUCTION}\nQuery: {text}")
+        if EMBEDDING_PROMPT_STYLE == "mmlw":
+            return super().embed_query(f"zapytanie: {text}")
         return super().embed_query(text)
 
 
