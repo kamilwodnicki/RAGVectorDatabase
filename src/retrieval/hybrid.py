@@ -8,6 +8,7 @@ from src.config import (
     HYBRID_DENSE_WEIGHT,
     HYBRID_RRF_K,
     HYBRID_SPARSE_WEIGHT,
+    QDRANT_CLIENT_TIMEOUT,
     SPARSE_VECTOR_NAME,
 )
 from src.db.client import get_client
@@ -80,6 +81,7 @@ def _search_dense(
         limit=k,
         with_payload=True,
         query_filter=query_filter,
+        timeout=QDRANT_CLIENT_TIMEOUT,
     )
     return [_hit_to_child(h) for h in response.points]
 
@@ -98,6 +100,7 @@ def _search_sparse(
         limit=k,
         with_payload=True,
         query_filter=query_filter,
+        timeout=QDRANT_CLIENT_TIMEOUT,
     )
     return [_hit_to_child(h) for h in response.points]
 
